@@ -2,11 +2,10 @@
 
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 export default function LoginPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const err = searchParams.get("error");
   const nextPath = searchParams.get("next") ?? "/map";
@@ -36,17 +35,6 @@ export default function LoginPage() {
     }
     setStatus("sent");
     setMessage("Check your email for the sign-in link.");
-  }
-
-  async function signInWithGoogle() {
-    const supabase = createClient();
-    const origin = window.location.origin;
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(safeNext)}`,
-      },
-    });
   }
 
   return (
@@ -94,25 +82,6 @@ export default function LoginPage() {
             {status === "sending" ? "Sending link…" : "Email me a magic link"}
           </button>
         </form>
-
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-zinc-200 dark:border-zinc-700" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-white px-2 text-zinc-500 dark:bg-zinc-900">
-              Or
-            </span>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => void signInWithGoogle()}
-          className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
-        >
-          Continue with Google
-        </button>
 
         {message ? (
           <p
