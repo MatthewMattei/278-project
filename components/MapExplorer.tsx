@@ -2,11 +2,17 @@
 
 import { createPin } from "@/app/actions/pins";
 import { createClient } from "@/lib/supabase/client";
-import { APIProvider, Map, Marker } from "@vis.gl/react-google-maps";
-import type { ComponentProps } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  MapContainer,
+  Marker,
+  TileLayer,
+  useMapEvents,
+} from "react-leaflet";
 
 type PinRow = {
   id: string;
@@ -17,7 +23,40 @@ type PinRow = {
 
 const defaultCenter = { lat: 37.7749, lng: -122.4194 };
 
-export function MapExplorer({ apiKey }: { apiKey: string }) {
+const DEFAULT_TILE_URL =
+  "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+
+const DEFAULT_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+
+/** Leaflet default icons break under bundlers; use CDN assets. */
+const markerIcon = L.icon({
+  iconUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  iconRetinaUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  shadowUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
+
+function MapClickHandler({
+  onClick,
+}: {
+  onClick: (lat: number, lng: number) => void;
+}) {
+  useMapEvents({
+    click(e) {
+      onClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
+export default function MapExplorer() {
   const router = useRouter();
   const [pins, setPins] = useState<PinRow[]>([]);
   const [draft, setDraft] = useState<{ lat: number; lng: number } | null>(
@@ -26,6 +65,14 @@ export function MapExplorer({ apiKey }: { apiKey: string }) {
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const tileUrl =
+    process.env.NEXT_PUBLIC_MAP_TILE_URL?.trim() || DEFAULT_TILE_URL;
+  const attribution =
+    process.env.NEXT_PUBLIC_MAP_TILE_ATTRIBUTION?.trim() ||
+    DEFAULT_ATTRIBUTION;
+  const subdomains =
+    process.env.NEXT_PUBLIC_MAP_TILE_SUBDOMAINS?.trim() || "abcd";
 
   const loadPins = useCallback(async () => {
     const supabase = createClient();
@@ -45,15 +92,11 @@ export function MapExplorer({ apiKey }: { apiKey: string }) {
     void loadPins();
   }, [loadPins]);
 
-  const onMapClick: NonNullable<ComponentProps<typeof Map>["onClick"]> = (
-    e,
-  ) => {
-    const latLng = e.detail.latLng;
-    if (!latLng) return;
-    setDraft({ lat: latLng.lat, lng: latLng.lng });
+  const onMapClick = useCallback((lat: number, lng: number) => {
+    setDraft({ lat, lng });
     setTitle("");
     setErr(null);
-  };
+  }, []);
 
   async function savePin() {
     if (!draft || !title.trim()) return;
@@ -72,28 +115,43 @@ export function MapExplorer({ apiKey }: { apiKey: string }) {
     }
   }
 
+  const mapKey = useMemo(
+    () => `${tileUrl}|${subdomains}`,
+    [tileUrl, subdomains],
+  );
+
   return (
     <div className="relative h-[calc(100vh-8rem)] w-full min-h-[420px]">
-      <APIProvider apiKey={apiKey}>
-        <Map
-          defaultCenter={defaultCenter}
-          defaultZoom={12}
-          gestureHandling="greedy"
-          disableDefaultUI={false}
-          onClick={onMapClick}
-          className="h-full w-full"
-        >
-          {pins.map((p) => (
-            <Marker
-              key={p.id}
-              position={{ lat: p.lat, lng: p.lng }}
-              onClick={() => router.push(`/pins/${p.id}`)}
-            />
-          ))}
-        </Map>
-      </APIProvider>
+      <MapContainer
+        key={mapKey}
+        center={[defaultCenter.lat, defaultCenter.lng]}
+        zoom={12}
+        scrollWheelZoom
+        className="z-0 h-full w-full [&_.leaflet-control-attribution]:text-[10px]"
+        style={{ height: "100%", width: "100%" }}
+      >
+        <TileLayer
+          attribution={attribution}
+          url={tileUrl}
+          subdomains={subdomains}
+        />
+        <MapClickHandler onClick={onMapClick} />
+        {pins.map((p) => (
+          <Marker
+            key={p.id}
+            position={[p.lat, p.lng]}
+            icon={markerIcon}
+            eventHandlers={{
+              click: (e) => {
+                L.DomEvent.stopPropagation(e.originalEvent);
+                router.push(`/pins/${p.id}`);
+              },
+            }}
+          />
+        ))}
+      </MapContainer>
 
-      <div className="pointer-events-none absolute left-3 top-3 max-w-sm rounded-lg bg-white/95 p-3 text-sm shadow-md dark:bg-zinc-900/95">
+      <div className="pointer-events-none absolute left-3 top-3 z-[1000] max-w-sm rounded-lg bg-white/95 p-3 text-sm shadow-md dark:bg-zinc-900/95">
         <p className="pointer-events-auto text-zinc-700 dark:text-zinc-300">
           Tap the map to drop a pin. Tap a marker to open the place.
         </p>
@@ -106,7 +164,7 @@ export function MapExplorer({ apiKey }: { apiKey: string }) {
       </div>
 
       {draft ? (
-        <div className="absolute bottom-6 left-1/2 z-10 w-[min(100%-2rem,420px)] -translate-x-1/2 rounded-xl border border-zinc-200 bg-white p-4 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+        <div className="absolute bottom-6 left-1/2 z-[1000] w-[min(100%-2rem,420px)] -translate-x-1/2 rounded-xl border border-zinc-200 bg-white p-4 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
           <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">
             New pin
           </h3>
