@@ -1,0 +1,35 @@
+import { amalgamateEventReview } from "@/lib/reviews/amalgamate";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+export async function GET(request: Request) {
+  const secret = process.env.CRON_SECRET;
+  const auth = request.headers.get("authorization");
+  if (!secret || auth !== `Bearer ${secret}`) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+  const { data: due, error } = await admin
+    .from("events")
+    .select("id")
+    .eq("status", "review_open")
+    .not("review_closes_at", "is", null)
+    .lte("review_closes_at", now);
+
+  if (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+
+  let processed = 0;
+  for (const row of due ?? []) {
+    try {
+      await amalgamateEventReview(row.id);
+      processed += 1;
+    } catch {
+      /* continue other events */
+    }
+  }
+
+  return Response.json({ processed, checked: due?.length ?? 0 });
+}
