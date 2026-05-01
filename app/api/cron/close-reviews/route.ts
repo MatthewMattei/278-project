@@ -1,6 +1,8 @@
 import { amalgamateEventReview } from "@/lib/reviews/amalgamate";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+/** Vercel Hobby allows at most daily crons — schedule is 12:00 UTC (see vercel.json). Auto-close may lag until the next run; planners can still close manually. */
+
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
   const auth = request.headers.get("authorization");
