@@ -160,18 +160,7 @@ create unique index events_invite_token on public.events (invite_token);
 
 alter table public.events enable row level security;
 
--- Visible if: public (authenticated) OR member OR planner
-create policy "events_select"
-  on public.events for select
-  to authenticated
-  using (
-    planner_id = (select auth.uid())
-    or visibility = 'public'
-    or exists (
-      select 1 from public.event_members em
-      where em.event_id = events.id and em.user_id = (select auth.uid())
-    )
-  );
+-- events_select is created after event_members (see below) because it references that table.
 
 create policy "events_insert_planner"
   on public.events for insert
@@ -194,6 +183,19 @@ create table public.event_members (
 );
 
 create index event_members_user on public.event_members (user_id);
+
+-- Visible if: public (authenticated) OR member OR planner (must run after event_members exists)
+create policy "events_select"
+  on public.events for select
+  to authenticated
+  using (
+    planner_id = (select auth.uid())
+    or visibility = 'public'
+    or exists (
+      select 1 from public.event_members em
+      where em.event_id = events.id and em.user_id = (select auth.uid())
+    )
+  );
 
 alter table public.event_members enable row level security;
 
