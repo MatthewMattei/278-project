@@ -22,7 +22,7 @@ export default function AuthBackgroundMap() {
     <MapContainer
       center={[defaultCenter.lat, defaultCenter.lng]}
       zoom={11}
-      className="h-full w-full"
+      className="h-full w-full [&_.leaflet-pane]:!z-0 [&_.leaflet-top]:hidden [&_.leaflet-bottom]:hidden"
       zoomControl={false}
       attributionControl={false}
       dragging={false}

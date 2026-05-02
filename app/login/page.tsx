@@ -139,13 +139,13 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex min-h-screen items-start justify-center overflow-hidden px-3 py-4 sm:items-center sm:px-4 sm:py-8">
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 z-0 pointer-events-none">
         <AuthBackgroundMap />
       </div>
       <div className="pointer-events-none absolute inset-0 bg-zinc-950/38" />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-zinc-950/45 via-zinc-900/22 to-zinc-950/58" />
 
-      <div className="relative z-10 w-full max-w-md rounded-3xl border border-white/35 bg-white/92 p-5 shadow-[0_24px_64px_rgba(15,23,42,0.35)] backdrop-blur-md dark:border-zinc-600 dark:bg-zinc-900/82 sm:p-8">
+      <div className="relative z-20 w-full max-w-md rounded-3xl border border-white/35 bg-white/92 p-5 shadow-[0_24px_64px_rgba(15,23,42,0.35)] backdrop-blur-md dark:border-zinc-600 dark:bg-zinc-900/82 sm:p-8">
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700/95 dark:text-emerald-300">
             PinTogether
