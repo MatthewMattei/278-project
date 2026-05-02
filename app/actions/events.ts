@@ -86,7 +86,10 @@ export async function deleteEvent(eventId: string) {
   revalidatePath("/map");
 }
 
-export async function addEventGuest(eventId: string, guestUserId: string) {
+export async function addEventGuest(
+  eventId: string,
+  guestUserId: string,
+): Promise<{ added: true } | { added: false; reason: "full" }> {
   const supabase = await createClient();
   await requireUserWithProfile(supabase);
 
@@ -96,9 +99,13 @@ export async function addEventGuest(eventId: string, guestUserId: string) {
   });
 
   if (error) throw new Error(error.message);
+  const row = data as { ok?: boolean; reason?: string } | null;
+  if (row?.ok === false && row?.reason === "full") {
+    return { added: false, reason: "full" };
+  }
   revalidatePath("/map");
   revalidatePath(`/events/${eventId}`);
-  return data;
+  return { added: true };
 }
 
 export async function leaveEvent(eventId: string) {
@@ -156,15 +163,22 @@ export async function removeEventMember(eventId: string, memberUserId: string) {
   revalidatePath(`/events/${eventId}`);
 }
 
-export async function joinPublicEvent(eventId: string) {
+export async function joinPublicEvent(
+  eventId: string,
+): Promise<{ joined: true } | { joined: false; reason: "full" }> {
   const supabase = await createClient();
   await requireUserWithProfile(supabase);
   const { data, error } = await supabase.rpc("join_public_event", {
     p_event_id: eventId,
   });
   if (error) throw new Error(error.message);
+  const row = data as { ok?: boolean; reason?: string } | null;
+  if (row?.ok === false && row?.reason === "full") {
+    return { joined: false, reason: "full" };
+  }
+  if (!row?.ok) throw new Error("Could not join this event.");
   revalidatePath(`/events/${eventId}`);
-  return data;
+  return { joined: true };
 }
 
 export async function joinPrivateEvent(token: string) {
@@ -174,7 +188,14 @@ export async function joinPrivateEvent(token: string) {
     p_token: token,
   });
   if (error) throw new Error(error.message);
-  const row = data as { event_id?: string } | null;
+  const row = data as {
+    ok?: boolean;
+    reason?: string;
+    event_id?: string;
+  } | null;
+  if (row?.ok === false && row?.reason === "full") {
+    return data;
+  }
   if (row?.event_id) {
     revalidatePath(`/events/${row.event_id}`);
   }

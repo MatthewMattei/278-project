@@ -75,15 +75,14 @@ export function EventPrivateGuestPicker({
     setBusyId(friendId);
     setMsg(null);
     try {
-      await addEventGuest(eventId, friendId);
+      const result = await addEventGuest(eventId, friendId);
+      if (result.added === false) return;
       await load();
       setMsg("Added to event.");
     } catch (e) {
       const raw = e instanceof Error ? e.message : "";
       if (raw.includes("already_started")) {
         setMsg("This event has already started, so invites are closed.");
-      } else if (raw.includes("full")) {
-        setMsg("This event is full.");
       } else if (raw.includes("not_friends")) {
         setMsg("You can only invite people on your friends list.");
       } else if (raw.includes("forbidden")) {

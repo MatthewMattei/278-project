@@ -171,7 +171,7 @@ export function PinDetailPanel({
       supabase
         .from("events")
         .select(
-          "id, starts_at, capacity, visibility, status, blurb, planner_id, members_can_invite_friends",
+          "id, starts_at, capacity, visibility, status, blurb, planner_id, members_can_invite_friends, event_members ( user_id )",
         )
         .eq("pin_id", pinId)
         .in("status", ["scheduled", "live", "review_open"])
@@ -191,11 +191,24 @@ export function PinDetailPanel({
     });
     setGroupReviews(revs);
 
+    type EventFromDb = EventRow & {
+      event_members?: { user_id: string }[] | null;
+    };
+    const rawEvents = (eventsData ?? []) as EventFromDb[];
+    const visibleEvents = rawEvents.filter((e) => {
+      const members = e.event_members ?? [];
+      const n = members.length;
+      const full = n >= e.capacity;
+      const inEvent =
+        e.planner_id === user.id ||
+        members.some((m) => m.user_id === user.id);
+      return !full || inEvent;
+    });
     setEvents(
-      (eventsData ?? []).map((e) => ({
-        ...e,
+      visibleEvents.map(({ event_members: _m, ...rest }) => ({
+        ...rest,
         members_can_invite_friends: Boolean(
-          (e as EventRow).members_can_invite_friends,
+          (rest as EventRow).members_can_invite_friends,
         ),
       })) as EventRow[],
     );

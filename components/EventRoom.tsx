@@ -378,7 +378,8 @@ export function EventRoom({
   async function onJoin() {
     setErr(null);
     try {
-      await joinPublicEvent(eventId);
+      const r = await joinPublicEvent(eventId);
+      if (r.joined === false) return;
       refreshRoot();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Join failed");
@@ -478,21 +479,31 @@ export function EventRoom({
   }
 
   const inEvent = isMember || isPlanner;
+  const rosterCount = memberRoster.length;
+  const eventIsFull = rosterCount >= eventCapacity;
 
   if (!inEvent) {
+    const joinBlockedFull =
+      visibility === "public" && eventIsFull;
     return (
       <div className={`${glassPanel} p-6 sm:p-8`}>
         <h2 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           Join this event
         </h2>
         {visibility === "public" ? (
-          <button
-            type="button"
-            onClick={() => void onJoin()}
-            className="mt-4 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700"
-          >
-            Join public event
-          </button>
+          joinBlockedFull ? (
+            <p className="mt-4 text-sm text-zinc-700 dark:text-zinc-300">
+              This event is full.
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void onJoin()}
+              className="mt-4 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700"
+            >
+              Join public event
+            </button>
+          )
         ) : (
           <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
             This event is private. Ask the host or someone already going to add
@@ -510,6 +521,7 @@ export function EventRoom({
   const canInviteGuests =
     eventNotStarted &&
     inEvent &&
+    !eventIsFull &&
     (isPlanner || (membersCanInviteFriends && isMember));
   const canPlannerDeleteEvent =
     isPlanner &&

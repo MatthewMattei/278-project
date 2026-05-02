@@ -31,9 +31,6 @@ export async function AppNav() {
           <Link href="/friends" className={linkClass}>
             Friends
           </Link>
-          <Link href="/notifications" className={linkClass}>
-            Alerts
-          </Link>
           <Link href="/guidelines" className={linkClass}>
             Guidelines
           </Link>
