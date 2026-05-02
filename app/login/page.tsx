@@ -1,47 +1,17 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import "leaflet/dist/leaflet.css";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { MapContainer, TileLayer } from "react-leaflet";
 
 type Tab = "signin" | "signup";
 type SignUpStep = 1 | 2 | 3;
 
-const defaultCenter = { lat: 37.7749, lng: -122.4194 };
-const DEFAULT_TILE_URL =
-  "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
-const DEFAULT_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
-
-function AuthBackgroundMap() {
-  const tileUrl =
-    process.env.NEXT_PUBLIC_MAP_TILE_URL?.trim() || DEFAULT_TILE_URL;
-  const attribution =
-    process.env.NEXT_PUBLIC_MAP_TILE_ATTRIBUTION?.trim() ||
-    DEFAULT_ATTRIBUTION;
-  const subdomains =
-    process.env.NEXT_PUBLIC_MAP_TILE_SUBDOMAINS?.trim() || "abcd";
-
-  return (
-    <MapContainer
-      center={[defaultCenter.lat, defaultCenter.lng]}
-      zoom={11}
-      className="h-full w-full"
-      zoomControl={false}
-      attributionControl={false}
-      dragging={false}
-      doubleClickZoom={false}
-      scrollWheelZoom={false}
-      touchZoom={false}
-      keyboard={false}
-      boxZoom={false}
-    >
-      <TileLayer attribution={attribution} url={tileUrl} subdomains={subdomains} />
-    </MapContainer>
-  );
-}
+const AuthBackgroundMap = dynamic(() => import("@/components/AuthBackgroundMap"), {
+  ssr: false,
+  loading: () => <div className="h-full w-full bg-zinc-900/30" />,
+});
 
 export default function LoginPage() {
   const router = useRouter();
