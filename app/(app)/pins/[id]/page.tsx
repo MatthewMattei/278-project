@@ -11,6 +11,23 @@ export default async function PinPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  // #region agent log
+  fetch("http://127.0.0.1:7403/ingest/9a011372-b90f-4fa6-a4b7-dbb8de750906", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "6eaa75",
+    },
+    body: JSON.stringify({
+      sessionId: "6eaa75",
+      location: "app/(app)/pins/[id]/page.tsx:entry",
+      message: "PinPage render start",
+      data: { id },
+      timestamp: Date.now(),
+      hypothesisId: "H5",
+    }),
+  }).catch(() => {});
+  // #endregion
   const supabase = await createClient();
   const {
     data: { user },
@@ -24,6 +41,35 @@ export default async function PinPage({
     .single();
 
   if (pinErr || !pin) notFound();
+
+  // #region agent log
+  fetch("http://127.0.0.1:7403/ingest/9a011372-b90f-4fa6-a4b7-dbb8de750906", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "6eaa75",
+    },
+    body: JSON.stringify({
+      sessionId: "6eaa75",
+      location: "app/(app)/pins/[id]/page.tsx:afterPin",
+      message: "Pin row loaded",
+      data: {
+        latType: typeof pin.lat,
+        lngType: typeof pin.lng,
+        latIsFinite:
+          typeof pin.lat === "number" ? Number.isFinite(pin.lat) : null,
+        lngIsFinite:
+          typeof pin.lng === "number" ? Number.isFinite(pin.lng) : null,
+        hasLatToFixed: typeof (pin.lat as unknown) === "object" || typeof pin.lat === "number"
+          ? typeof (pin.lat as { toFixed?: (n: number) => string }).toFixed ===
+            "function"
+          : false,
+      },
+      timestamp: Date.now(),
+      hypothesisId: "H1",
+    }),
+  }).catch(() => {});
+  // #endregion
 
   const { data: reviews } = await supabase
     .from("reviews")
@@ -81,6 +127,56 @@ export default async function PinPage({
     .select("id, starts_at, capacity, visibility, status, blurb, planner_id")
     .eq("pin_id", id)
     .order("starts_at", { ascending: true });
+
+  // #region agent log
+  const ev0 = (events ?? [])[0];
+  fetch("http://127.0.0.1:7403/ingest/9a011372-b90f-4fa6-a4b7-dbb8de750906", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "6eaa75",
+    },
+    body: JSON.stringify({
+      sessionId: "6eaa75",
+      location: "app/(app)/pins/[id]/page.tsx:afterEvents",
+      message: "Events for pin",
+      data: {
+        eventCount: (events ?? []).length,
+        firstBlurbType: ev0 ? typeof ev0.blurb : null,
+        firstBlurbNull: ev0 ? ev0.blurb == null : null,
+      },
+      timestamp: Date.now(),
+      hypothesisId: "H2",
+    }),
+  }).catch(() => {});
+  // #endregion
+
+  const groupWithSummaries = sorted.find(
+    (r) => r.scope === "group" && r.member_summaries,
+  );
+  // #region agent log
+  fetch("http://127.0.0.1:7403/ingest/9a011372-b90f-4fa6-a4b7-dbb8de750906", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "6eaa75",
+    },
+    body: JSON.stringify({
+      sessionId: "6eaa75",
+      location: "app/(app)/pins/[id]/page.tsx:reviewsShape",
+      message: "Reviews sorted / group summaries",
+      data: {
+        reviewCount: sorted.length,
+        hasGroupWithSummaries: Boolean(groupWithSummaries),
+        memberSummariesIsArray: Array.isArray(
+          groupWithSummaries?.member_summaries,
+        ),
+      },
+      timestamp: Date.now(),
+      hypothesisId: "H3",
+    }),
+  }).catch(() => {});
+  // #endregion
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
