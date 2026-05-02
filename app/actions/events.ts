@@ -101,6 +101,61 @@ export async function addEventGuest(eventId: string, guestUserId: string) {
   return data;
 }
 
+export async function leaveEvent(eventId: string) {
+  const supabase = await createClient();
+  const user = await requireUserWithProfile(supabase);
+
+  const { data: ev, error: evErr } = await supabase
+    .from("events")
+    .select("planner_id")
+    .eq("id", eventId)
+    .single();
+
+  if (evErr || !ev) throw new Error("Event not found");
+  if (ev.planner_id === user.id) {
+    throw new Error(
+      "As the host you stay on the roster until you delete the event.",
+    );
+  }
+
+  const { error } = await supabase
+    .from("event_members")
+    .delete()
+    .eq("event_id", eventId)
+    .eq("user_id", user.id);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/map");
+  revalidatePath(`/events/${eventId}`);
+}
+
+export async function removeEventMember(eventId: string, memberUserId: string) {
+  const supabase = await createClient();
+  const user = await requireUserWithProfile(supabase);
+
+  const { data: ev, error: evErr } = await supabase
+    .from("events")
+    .select("planner_id")
+    .eq("id", eventId)
+    .single();
+
+  if (evErr || !ev) throw new Error("Event not found");
+  if (ev.planner_id !== user.id) throw new Error("Forbidden");
+  if (memberUserId === ev.planner_id) {
+    throw new Error("Cannot remove the host from the event.");
+  }
+
+  const { error } = await supabase
+    .from("event_members")
+    .delete()
+    .eq("event_id", eventId)
+    .eq("user_id", memberUserId);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/map");
+  revalidatePath(`/events/${eventId}`);
+}
+
 export async function joinPublicEvent(eventId: string) {
   const supabase = await createClient();
   await requireUserWithProfile(supabase);
@@ -270,6 +325,28 @@ export async function postPlannerBroadcast(eventId: string, body: string) {
   if (error) throw new Error(error.message);
   revalidatePath(`/events/${eventId}`);
   return data;
+}
+
+export async function deleteEventMessage(messageId: string) {
+  const supabase = await createClient();
+  await requireUserWithProfile(supabase);
+
+  const { data: row, error: qErr } = await supabase
+    .from("event_messages")
+    .select("event_id")
+    .eq("id", messageId)
+    .single();
+
+  if (qErr || !row) throw new Error("Message not found");
+
+  const { error } = await supabase
+    .from("event_messages")
+    .delete()
+    .eq("id", messageId);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/map");
+  revalidatePath(`/events/${row.event_id}`);
 }
 
 export async function toggleReaction(messageId: string, emoji: string) {

@@ -23,6 +23,7 @@ export type EventRoomPollOption = {
 export type EventRoomPoll = {
   id: string;
   question: string;
+  created_at: string;
   poll_options: EventRoomPollOption[];
 };
 
@@ -135,7 +136,7 @@ export async function loadEventRoomPayload(
 
   const { data: polls } = await supabase
     .from("polls")
-    .select("id, question, poll_options(id, label_text, sort_order)")
+    .select("id, question, created_at, poll_options(id, label_text, sort_order)")
     .eq("event_id", eventId);
 
   const pollList = (polls ?? []) as EventRoomPoll[];

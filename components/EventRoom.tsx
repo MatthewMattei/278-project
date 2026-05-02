@@ -4,9 +4,12 @@ import {
   closeReviewManually,
   createPoll,
   deleteEvent,
+  deleteEventMessage,
   joinPublicEvent,
+  leaveEvent,
   openReviewWindow,
   postPlannerBroadcast,
+  removeEventMember,
   setEventLive,
   submitContribution,
   toggleReaction,
@@ -44,8 +47,26 @@ type PollOption = { id: string; label_text: string; sort_order: number };
 type Poll = {
   id: string;
   question: string;
+  created_at: string;
   poll_options: PollOption[];
 };
+
+type ChatTimelineEntry =
+  | { type: "message"; id: string; at: string; message: Message }
+  | { type: "poll"; id: string; at: string; poll: Poll };
+
+function formatChatTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
 
 type Contribution = { user_id: string; body: string; rating: number };
 
@@ -69,6 +90,7 @@ export function EventRoom({
   showBackToPinLink = true,
   onRefreshRoot,
   onEventDeleted,
+  onLeftEvent,
   plannerProfile,
   eventStartsAt,
   eventBlurb,
@@ -92,6 +114,8 @@ export function EventRoom({
   showBackToPinLink?: boolean;
   onRefreshRoot?: () => void;
   onEventDeleted?: () => void;
+  /** Called after the current user leaves as a non-host (e.g. clear map ?event=). */
+  onLeftEvent?: () => void;
   plannerProfile?: PlannerProfile | null;
   eventStartsAt: string;
   eventBlurb: string;
@@ -116,6 +140,9 @@ export function EventRoom({
   const [broadcast, setBroadcast] = useState("");
   const [pollQ, setPollQ] = useState("");
   const [pollOpts, setPollOpts] = useState("Option A\nOption B");
+  const [composerTab, setComposerTab] = useState<"message" | "poll">(
+    "message",
+  );
   const [revBody, setRevBody] = useState("");
   const [revRating, setRevRating] = useState(5);
   const [editContrib, setEditContrib] = useState(false);
@@ -168,7 +195,7 @@ export function EventRoom({
     const [{ data: p }, { data: c }] = await Promise.all([
       supabase
         .from("polls")
-        .select("id, question, poll_options(id, label_text, sort_order)")
+        .select("id, question, created_at, poll_options(id, label_text, sort_order)")
         .eq("event_id", eventId),
       supabase
         .from("review_contributions")
@@ -289,6 +316,37 @@ export function EventRoom({
     return map;
   }, [reactions]);
 
+  const chatTimeline = useMemo((): ChatTimelineEntry[] => {
+    const entries: ChatTimelineEntry[] = [
+      ...messages.map((message) => ({
+        type: "message" as const,
+        id: `m:${message.id}`,
+        at: message.created_at,
+        message,
+      })),
+      ...polls.map((poll) => ({
+        type: "poll" as const,
+        id: `p:${poll.id}`,
+        at: poll.created_at,
+        poll,
+      })),
+    ];
+    entries.sort(
+      (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
+    );
+    return entries;
+  }, [messages, polls]);
+
+  const attendeesSorted = useMemo(() => {
+    const rows = [...memberRoster];
+    rows.sort((a, b) => {
+      if (a.user_id === plannerId) return -1;
+      if (b.user_id === plannerId) return 1;
+      return a.display_name.localeCompare(b.display_name);
+    });
+    return rows;
+  }, [memberRoster, plannerId]);
+
   async function onJoin() {
     setErr(null);
     try {
@@ -309,11 +367,7 @@ export function EventRoom({
       setBroadcast("");
       if (row) {
         setMessages((prev) =>
-          prev.some((m) => m.id === row.id)
-            ? prev
-            : [...prev, row as Message].sort((a, b) =>
-                a.created_at.localeCompare(b.created_at),
-              ),
+          prev.some((m) => m.id === row.id) ? prev : [...prev, row as Message],
         );
       }
       await reload();
@@ -370,6 +424,7 @@ export function EventRoom({
       setPollQ("");
       setPollOpts("Option A\nOption B");
       await reload();
+      refreshRoot();
     } catch (er) {
       setErr(er instanceof Error ? er.message : "Failed");
     } finally {
@@ -490,6 +545,100 @@ export function EventRoom({
           myUserId={myUserId}
           canInvite={canInviteGuests}
         />
+      ) : null}
+
+      {inEvent && !isPlanner ? (
+        <div className="rounded-2xl border border-zinc-200/80 p-4 dark:border-zinc-700">
+          <button
+            type="button"
+            disabled={busy}
+            className="rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-800 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200"
+            onClick={() => {
+              if (
+                !confirm(
+                  "Leave this event? You can join again if it is public or someone invites you.",
+                )
+              ) {
+                return;
+              }
+              void (async () => {
+                setBusy(true);
+                setErr(null);
+                try {
+                  await leaveEvent(eventId);
+                  onLeftEvent?.();
+                  if (!onLeftEvent) refreshRoot();
+                } catch (er) {
+                  setErr(
+                    er instanceof Error ? er.message : "Could not leave event",
+                  );
+                } finally {
+                  setBusy(false);
+                }
+              })();
+            }}
+          >
+            Leave event
+          </button>
+        </div>
+      ) : null}
+
+      {isPlanner ? (
+        <div className="rounded-2xl border border-zinc-200/80 p-4 dark:border-zinc-700">
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Who&apos;s planning to attend ({memberRoster.length})
+          </p>
+          <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto text-sm">
+            {attendeesSorted.map((m) => (
+              <li
+                key={m.user_id}
+                className="flex flex-wrap items-center justify-between gap-2"
+              >
+                <span className="text-zinc-900 dark:text-zinc-100">
+                  {m.display_name}
+                  {m.user_id === plannerId ? (
+                    <span className="font-normal text-zinc-500"> · host</span>
+                  ) : null}
+                </span>
+                {m.user_id !== plannerId ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-700 disabled:opacity-50 dark:border-red-900 dark:text-red-400"
+                    onClick={() => {
+                      if (
+                        !confirm(
+                          `Remove ${m.display_name} from this event?`,
+                        )
+                      ) {
+                        return;
+                      }
+                      void (async () => {
+                        setBusy(true);
+                        setErr(null);
+                        try {
+                          await removeEventMember(eventId, m.user_id);
+                          await reload();
+                          refreshRoot();
+                        } catch (er) {
+                          setErr(
+                            er instanceof Error
+                              ? er.message
+                              : "Could not remove member",
+                          );
+                        } finally {
+                          setBusy(false);
+                        }
+                      })();
+                    }}
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       {canPlannerEditEventDetails ? (
@@ -797,128 +946,224 @@ export function EventRoom({
           </div>
         </div>
       ) : (
-        <div className="flex max-h-[min(560px,70vh)] min-h-[280px] flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+        <div
+          className={`relative flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 ${
+            isPlanner
+              ? "min-h-[min(72vh,760px)]"
+              : "min-h-[min(58vh,560px)]"
+          }`}
+        >
           <div className="shrink-0 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
               Event chat
             </h2>
             <p className="mt-0.5 text-sm text-zinc-500">
-              Only the host can post updates or create polls. Everyone here can
-              react and vote in polls below.
+              Messages and polls appear together, newest first. Only the host
+              can post; everyone can react and vote.
             </p>
           </div>
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3">
-            <ul className="space-y-3">
-              {messages.length === 0 ? (
+          <div
+            className={`min-h-0 flex-1 overflow-y-auto px-4 py-3 ${
+              isPlanner ? "pb-28" : "pb-4"
+            }`}
+          >
+            <ul className="space-y-4">
+              {chatTimeline.length === 0 ? (
                 <li className="text-sm text-zinc-500">
-                  No messages yet.{isPlanner ? " Post an update below." : ""}
+                  Nothing here yet.
+                  {isPlanner
+                    ? " Use the bar at the bottom to send an update or start a poll."
+                    : ""}
                 </li>
               ) : (
-                messages.map((msg) => (
-                  <li
-                    key={msg.id}
-                    className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 dark:border-zinc-700 dark:bg-zinc-900/50"
-                  >
-                    <div className="text-xs uppercase text-zinc-500">
-                      {msg.kind === "planner_broadcast"
-                        ? "Planner"
-                        : msg.kind}
-                    </div>
-                    <p className="mt-1 text-zinc-900 dark:text-zinc-100">
-                      {msg.body}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {EMOJIS.map((em) => {
-                        const mine = reactions.some(
-                          (r) =>
-                            r.message_id === msg.id &&
-                            r.user_id === myUserId &&
-                            r.emoji === em,
-                        );
-                        return (
+                chatTimeline.map((entry) =>
+                  entry.type === "message" ? (
+                    <li
+                      key={entry.id}
+                      className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 dark:border-zinc-700 dark:bg-zinc-900/50"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="text-xs text-zinc-500">
+                          <span className="font-medium uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
+                            {entry.message.kind === "planner_broadcast"
+                              ? "Host"
+                              : entry.message.kind === "system"
+                                ? "Update"
+                                : entry.message.kind}
+                          </span>
+                          <span className="mx-2 text-zinc-300 dark:text-zinc-600">
+                            ·
+                          </span>
+                          <time dateTime={entry.message.created_at}>
+                            {formatChatTime(entry.message.created_at)}
+                          </time>
+                        </div>
+                        {isPlanner ? (
                           <button
-                            key={em}
                             type="button"
-                            className={`rounded border px-2 py-0.5 text-sm transition-colors ${
-                              mine
-                                ? "border-emerald-500 bg-emerald-100/90 text-emerald-900 dark:border-emerald-600 dark:bg-emerald-950/80 dark:text-emerald-100"
-                                : "border-zinc-200 dark:border-zinc-700"
-                            }`}
-                            onClick={() => onReact(msg.id, em)}
+                            className="text-xs text-red-600 hover:underline dark:text-red-400"
+                            disabled={busy}
+                            onClick={() => {
+                              if (
+                                !confirm(
+                                  "Delete this message for everyone?",
+                                )
+                              ) {
+                                return;
+                              }
+                              void (async () => {
+                                setBusy(true);
+                                setErr(null);
+                                try {
+                                  await deleteEventMessage(entry.message.id);
+                                  await reload();
+                                  refreshRoot();
+                                } catch (er) {
+                                  setErr(
+                                    er instanceof Error
+                                      ? er.message
+                                      : "Could not delete",
+                                  );
+                                } finally {
+                                  setBusy(false);
+                                }
+                              })();
+                            }}
                           >
-                            {em}{" "}
-                            {reactionCount.get(msg.id)?.get(em) ?? 0}
+                            Delete
                           </button>
-                        );
-                      })}
-                    </div>
-                  </li>
-                ))
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-zinc-900 dark:text-zinc-100">
+                        {entry.message.body}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {EMOJIS.map((em) => {
+                          const mine = reactions.some(
+                            (r) =>
+                              r.message_id === entry.message.id &&
+                              r.user_id === myUserId &&
+                              r.emoji === em,
+                          );
+                          return (
+                            <button
+                              key={em}
+                              type="button"
+                              className={`rounded border px-2 py-0.5 text-sm transition-colors ${
+                                mine
+                                  ? "border-emerald-500 bg-emerald-100/90 text-emerald-900 dark:border-emerald-600 dark:bg-emerald-950/80 dark:text-emerald-100"
+                                  : "border-zinc-200 dark:border-zinc-700"
+                              }`}
+                              onClick={() => onReact(entry.message.id, em)}
+                            >
+                              {em}{" "}
+                              {reactionCount.get(entry.message.id)?.get(em) ??
+                                0}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </li>
+                  ) : (
+                    <li key={entry.id} className="space-y-2">
+                      <div className="text-xs text-zinc-500">
+                        <span className="font-medium uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
+                          Poll
+                        </span>
+                        <span className="mx-2 text-zinc-300 dark:text-zinc-600">
+                          ·
+                        </span>
+                        <time dateTime={entry.poll.created_at}>
+                          {formatChatTime(entry.poll.created_at)}
+                        </time>
+                      </div>
+                      <PollBlock
+                        poll={entry.poll}
+                        myUserId={myUserId}
+                        pollVotes={pollVotes}
+                        onVote={onVote}
+                      />
+                    </li>
+                  ),
+                )
               )}
             </ul>
-            {polls.length > 0 ? (
-              <div className="space-y-3 border-t border-zinc-200/80 pt-3 dark:border-zinc-800">
-                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  Polls
-                </p>
-                {polls.map((poll) => (
-                  <PollBlock
-                    key={poll.id}
-                    poll={poll}
-                    myUserId={myUserId}
-                    pollVotes={pollVotes}
-                    onVote={onVote}
-                  />
-                ))}
-              </div>
-            ) : null}
           </div>
           {isPlanner ? (
-            <div className="shrink-0 space-y-3 border-t border-zinc-200 p-3 dark:border-zinc-800">
-              <form onSubmit={(e) => void onBroadcast(e)}>
-                <textarea
-                  value={broadcast}
-                  onChange={(e) => setBroadcast(e.target.value)}
-                  placeholder="Updates for everyone — logistics, timing, meeting spot…"
-                  rows={3}
-                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
-                />
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                >
-                  Send
-                </button>
-              </form>
-              <form
-                onSubmit={(e) => void onCreatePoll(e)}
-                className="space-y-2 border-t border-zinc-200/80 pt-3 dark:border-zinc-800"
-              >
-                <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                  New poll (host only)
-                </p>
-                <input
-                  value={pollQ}
-                  onChange={(e) => setPollQ(e.target.value)}
-                  placeholder="Question"
-                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
-                />
-                <textarea
-                  value={pollOpts}
-                  onChange={(e) => setPollOpts(e.target.value)}
-                  placeholder="One option per line"
-                  rows={3}
-                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
-                />
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="rounded-lg bg-zinc-800 px-4 py-2 text-sm text-white dark:bg-zinc-200 dark:text-zinc-900"
-                >
-                  Create poll
-                </button>
-              </form>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
+              <div className="pointer-events-auto mx-auto max-w-3xl border-t border-zinc-200/90 bg-white/95 px-3 pb-3 pt-2 shadow-[0_-12px_32px_rgba(0,0,0,0.1)] backdrop-blur-md dark:border-zinc-700 dark:bg-zinc-950/95 dark:shadow-[0_-12px_32px_rgba(0,0,0,0.45)]">
+                <div className="mb-2 flex gap-1 rounded-lg bg-zinc-100 p-0.5 dark:bg-zinc-900">
+                  <button
+                    type="button"
+                    className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium ${
+                      composerTab === "message"
+                        ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50"
+                        : "text-zinc-600 dark:text-zinc-400"
+                    }`}
+                    onClick={() => setComposerTab("message")}
+                  >
+                    Message
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium ${
+                      composerTab === "poll"
+                        ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50"
+                        : "text-zinc-600 dark:text-zinc-400"
+                    }`}
+                    onClick={() => setComposerTab("poll")}
+                  >
+                    Poll
+                  </button>
+                </div>
+                {composerTab === "message" ? (
+                  <form
+                    onSubmit={(e) => void onBroadcast(e)}
+                    className="space-y-2"
+                  >
+                    <textarea
+                      value={broadcast}
+                      onChange={(e) => setBroadcast(e.target.value)}
+                      placeholder="Update everyone — logistics, timing, meeting spot…"
+                      rows={2}
+                      className="w-full resize-none rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
+                    />
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                    >
+                      Send
+                    </button>
+                  </form>
+                ) : (
+                  <form
+                    onSubmit={(e) => void onCreatePoll(e)}
+                    className="space-y-2"
+                  >
+                    <input
+                      value={pollQ}
+                      onChange={(e) => setPollQ(e.target.value)}
+                      placeholder="Poll question"
+                      className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
+                    />
+                    <textarea
+                      value={pollOpts}
+                      onChange={(e) => setPollOpts(e.target.value)}
+                      placeholder="One option per line"
+                      rows={2}
+                      className="w-full resize-none rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
+                    />
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="w-full rounded-lg bg-zinc-800 py-2 text-sm text-white dark:bg-zinc-200 dark:text-zinc-900"
+                    >
+                      Create poll
+                    </button>
+                  </form>
+                )}
+              </div>
             </div>
           ) : null}
         </div>

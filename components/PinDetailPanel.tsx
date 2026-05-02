@@ -451,6 +451,10 @@ export function PinDetailPanel({
                     mapQuery({ event: null });
                     void load();
                   }}
+                  onLeftEvent={() => {
+                    mapQuery({ event: null });
+                    void load();
+                  }}
                   plannerProfile={eventPayload.data.plannerProfile}
                   eventStartsAt={eventPayload.data.event.starts_at}
                   eventBlurb={eventPayload.data.event.blurb}
