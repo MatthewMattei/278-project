@@ -3,7 +3,7 @@
 import { createEvent } from "@/app/actions/events";
 import { NormReminder } from "@/components/NormReminder";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export function CreateEventForm({
   pinId,
@@ -12,25 +12,17 @@ export function CreateEventForm({
 }: {
   pinId: string;
   onSuccess?: (eventId: string) => void;
-  /** When true, show a compact prompt until the user expands the full form. */
   defaultCollapsed?: boolean;
 }) {
   const router = useRouter();
   const [startsAt, setStartsAt] = useState("");
   const [capacity, setCapacity] = useState(8);
   const [visibility, setVisibility] = useState<"public" | "private">("public");
+  const [membersCanInviteFriends, setMembersCanInviteFriends] = useState(false);
   const [blurb, setBlurb] = useState("");
-  const [inviteToken, setInviteToken] = useState<string | null>(null);
-  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(!defaultCollapsed);
-
-  useEffect(() => {
-    if (inviteToken && typeof window !== "undefined") {
-      setInviteUrl(`${window.location.origin}/join?t=${inviteToken}`);
-    }
-  }, [inviteToken]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,10 +36,10 @@ export function CreateEventForm({
         capacity,
         visibility,
         blurb,
+        membersCanInviteFriends:
+          visibility === "private" ? membersCanInviteFriends : false,
       });
-      if (visibility === "private") {
-        setInviteToken(ev.invite_token);
-      }
+      void ev.invite_token;
       router.refresh();
       onSuccess?.(ev.id);
     } catch (er) {
@@ -97,6 +89,37 @@ export function CreateEventForm({
       <NormReminder context="event" />
       <form onSubmit={(e) => void onSubmit(e)} className="mt-4 space-y-3">
         <div>
+          <label className="block text-sm font-medium">Visibility</label>
+          <select
+            value={visibility}
+            onChange={(e) => {
+              const v = e.target.value as "public" | "private";
+              setVisibility(v);
+              if (v === "public") setMembersCanInviteFriends(false);
+            }}
+            className="mt-1 w-full rounded-xl border border-zinc-200/90 bg-white/70 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/50"
+          >
+            <option value="public">Public — anyone can join until full</option>
+            <option value="private">
+              Private — only people you add from friends
+            </option>
+          </select>
+        </div>
+        {visibility === "private" ? (
+          <label className="flex cursor-pointer items-start gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={membersCanInviteFriends}
+              onChange={(e) => setMembersCanInviteFriends(e.target.checked)}
+            />
+            <span>
+              Let anyone in the event invite their own friends (not only the
+              host).
+            </span>
+          </label>
+        ) : null}
+        <div>
           <label className="block text-sm font-medium">Starts</label>
           <input
             type="datetime-local"
@@ -118,19 +141,6 @@ export function CreateEventForm({
           />
         </div>
         <div>
-          <label className="block text-sm font-medium">Visibility</label>
-          <select
-            value={visibility}
-            onChange={(e) =>
-              setVisibility(e.target.value as "public" | "private")
-            }
-            className="mt-1 w-full rounded-xl border border-zinc-200/90 bg-white/70 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/50"
-          >
-            <option value="public">Public</option>
-            <option value="private">Private (invite link)</option>
-          </select>
-        </div>
-        <div>
           <label className="block text-sm font-medium">Blurb</label>
           <textarea
             required
@@ -144,18 +154,10 @@ export function CreateEventForm({
         {err ? (
           <p className="text-sm text-red-600 dark:text-red-400">{err}</p>
         ) : null}
-        {inviteUrl ? (
-          <p className="text-sm text-zinc-700 dark:text-zinc-300">
-            Private invite:{" "}
-            <code className="break-all rounded bg-zinc-100 px-1 dark:bg-zinc-800">
-              {inviteUrl}
-            </code>
-          </p>
-        ) : null}
         <button
           type="submit"
           disabled={busy}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {busy ? "Creating…" : "Create event"}
         </button>

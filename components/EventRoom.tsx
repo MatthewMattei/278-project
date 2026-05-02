@@ -4,16 +4,23 @@ import {
   addReaction,
   closeReviewManually,
   createPoll,
+  deleteEvent,
   joinPublicEvent,
   openReviewWindow,
   postPlannerBroadcast,
   setEventLive,
   submitContribution,
+  updateContribution,
+  updateEventDetails,
   votePoll,
 } from "@/app/actions/events";
+import { AvatarImg } from "@/components/AvatarImg";
+import { EventPrivateGuestPicker } from "@/components/EventPrivateGuestPicker";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+import type { PlannerProfile } from "@/lib/events/event-room-data";
 
 type Message = {
   id: string;
@@ -54,6 +61,12 @@ export function EventRoom({
   initialContributions,
   showBackToPinLink = true,
   onRefreshRoot,
+  onEventDeleted,
+  plannerProfile,
+  eventStartsAt,
+  eventBlurb,
+  eventCapacity,
+  membersCanInviteFriends,
 }: {
   eventId: string;
   pinId: string;
@@ -66,10 +79,14 @@ export function EventRoom({
   isMember: boolean;
   myUserId: string;
   initialContributions: Contribution[];
-  /** When false, hide footer link (e.g. parent panel handles navigation). */
   showBackToPinLink?: boolean;
-  /** If set, called instead of router.refresh() so embedded parents can refetch. */
   onRefreshRoot?: () => void;
+  onEventDeleted?: () => void;
+  plannerProfile?: PlannerProfile | null;
+  eventStartsAt: string;
+  eventBlurb: string;
+  eventCapacity: number;
+  membersCanInviteFriends: boolean;
 }) {
   const router = useRouter();
 
@@ -87,8 +104,35 @@ export function EventRoom({
   const [pollOpts, setPollOpts] = useState("Option A\nOption B");
   const [revBody, setRevBody] = useState("");
   const [revRating, setRevRating] = useState(5);
+  const [editContrib, setEditContrib] = useState(false);
+
+  useEffect(() => {
+    if (myContribution) {
+      setRevBody(myContribution.body);
+      setRevRating(myContribution.rating);
+    }
+  }, [myContribution]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [editingEvent, setEditingEvent] = useState(false);
+  const [editBlurb, setEditBlurb] = useState(eventBlurb);
+  const [editCap, setEditCap] = useState(eventCapacity);
+  const [editStarts, setEditStarts] = useState(() =>
+    eventStartsAt.slice(0, 16),
+  );
+  const [editMemInvite, setEditMemInvite] = useState(membersCanInviteFriends);
+
+  const eventNotStarted = useMemo(
+    () => new Date(eventStartsAt).getTime() > Date.now(),
+    [eventStartsAt],
+  );
+
+  useEffect(() => {
+    setEditBlurb(eventBlurb);
+    setEditCap(eventCapacity);
+    setEditStarts(eventStartsAt.slice(0, 16));
+    setEditMemInvite(membersCanInviteFriends);
+  }, [eventBlurb, eventCapacity, eventStartsAt, membersCanInviteFriends]);
 
   const reload = useCallback(async () => {
     const supabase = createClient();
@@ -280,7 +324,8 @@ export function EventRoom({
           </button>
         ) : (
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            This event is private. Ask the planner for an invite link.
+            This event is private. Ask the host or someone already going to add
+            you from their friends list.
           </p>
         )}
         {err ? (
@@ -291,9 +336,151 @@ export function EventRoom({
   }
 
   const reviewOpen = status === "review_open";
+  const canInviteGuests =
+    visibility === "private" &&
+    isMember &&
+    (isPlanner || membersCanInviteFriends);
+
+  async function saveEventEdits(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setErr(null);
+    try {
+      await updateEventDetails(eventId, {
+        blurb: editBlurb,
+        capacity: editCap,
+        startsAt: new Date(editStarts).toISOString(),
+        membersCanInviteFriends: editMemInvite,
+      });
+      setEditingEvent(false);
+      refreshRoot();
+    } catch (er) {
+      setErr(er instanceof Error ? er.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeEvent() {
+    if (!confirm("Delete this event? This cannot be undone.")) return;
+    setBusy(true);
+    try {
+      await deleteEvent(eventId);
+      onEventDeleted?.();
+      refreshRoot();
+    } catch (er) {
+      setErr(er instanceof Error ? er.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
+      <div className="flex items-start gap-3 rounded-2xl border border-zinc-200/80 bg-white/60 p-3 dark:border-zinc-700 dark:bg-zinc-900/40">
+        <AvatarImg
+          src={plannerProfile?.avatar_url}
+          alt={plannerProfile?.display_name ?? "Host"}
+          size={44}
+        />
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Host
+          </p>
+          <p className="font-semibold text-zinc-900 dark:text-zinc-50">
+            {plannerProfile?.display_name ?? "Organizer"}
+          </p>
+        </div>
+      </div>
+
+      {visibility === "private" && isMember ? (
+        <EventPrivateGuestPicker
+          eventId={eventId}
+          myUserId={myUserId}
+          canInvite={canInviteGuests}
+        />
+      ) : null}
+
+      {isPlanner && eventNotStarted ? (
+        <div className="rounded-2xl border border-zinc-200/80 p-4 dark:border-zinc-700">
+          {!editingEvent ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingEvent(true)}
+                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
+              >
+                Edit event details
+              </button>
+              <button
+                type="button"
+                onClick={() => void removeEvent()}
+                className="rounded-xl border border-red-200 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:text-red-400"
+              >
+                Delete event
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={(e) => void saveEventEdits(e)} className="space-y-3">
+              <div>
+                <label className="text-xs font-medium">Starts</label>
+                <input
+                  type="datetime-local"
+                  value={editStarts}
+                  onChange={(e) => setEditStarts(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-zinc-200 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium">Capacity</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={editCap}
+                  onChange={(e) => setEditCap(Number(e.target.value))}
+                  className="mt-1 w-full rounded-xl border border-zinc-200 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium">Blurb</label>
+                <textarea
+                  value={editBlurb}
+                  onChange={(e) => setEditBlurb(e.target.value)}
+                  rows={3}
+                  className="mt-1 w-full rounded-xl border border-zinc-200 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                />
+              </div>
+              {visibility === "private" ? (
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={editMemInvite}
+                    onChange={(e) => setEditMemInvite(e.target.checked)}
+                  />
+                  Members can invite their friends
+                </label>
+              ) : null}
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="rounded-xl bg-emerald-600 px-3 py-2 text-sm text-white"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingEvent(false)}
+                  className="text-sm text-zinc-500"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      ) : null}
+
       {isPlanner ? (
         <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
           <button
@@ -353,10 +540,20 @@ export function EventRoom({
             </p>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-            {myContribution ? (
-              <p className="text-sm text-zinc-700 dark:text-zinc-300">
-                You submitted your review. Thanks.
-              </p>
+            {myContribution && !editContrib ? (
+              <div className="space-y-2">
+                <p className="text-sm text-zinc-700 dark:text-zinc-300">
+                  You submitted your review ({myContribution.rating}/5). You can
+                  edit while this window is open.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setEditContrib(true)}
+                  className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-600"
+                >
+                  Edit my review
+                </button>
+              </div>
             ) : (
               <form
                 onSubmit={(e) => {
@@ -365,8 +562,13 @@ export function EventRoom({
                     setBusy(true);
                     setErr(null);
                     try {
-                      await submitContribution(eventId, revBody, revRating);
-                      setRevBody("");
+                      if (myContribution) {
+                        await updateContribution(eventId, revBody, revRating);
+                        setEditContrib(false);
+                      } else {
+                        await submitContribution(eventId, revBody, revRating);
+                        setRevBody("");
+                      }
                       await reload();
                       refreshRoot();
                     } catch (er) {
@@ -406,13 +608,32 @@ export function EventRoom({
                     className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
                   />
                 </div>
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                >
-                  {busy ? "Submitting…" : "Submit review"}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {busy
+                      ? "Saving…"
+                      : myContribution
+                        ? "Save changes"
+                        : "Submit review"}
+                  </button>
+                  {myContribution && editContrib ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditContrib(false);
+                        setRevBody(myContribution.body);
+                        setRevRating(myContribution.rating);
+                      }}
+                      className="rounded-lg border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-600"
+                    >
+                      Cancel
+                    </button>
+                  ) : null}
+                </div>
               </form>
             )}
             <ul className="mt-6 space-y-2 border-t border-emerald-200/80 pt-4 text-sm text-zinc-600 dark:border-emerald-900 dark:text-zinc-400">

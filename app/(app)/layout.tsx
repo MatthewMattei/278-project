@@ -17,9 +17,11 @@ export default async function AppGroupLayout({
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950">
       <AppNav />
-      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+        {children}
+      </div>
     </div>
   );
 }

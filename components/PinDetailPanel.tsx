@@ -1,9 +1,17 @@
 "use client";
 
-import { createReviewComment } from "@/app/actions/pins";
+import {
+  deleteGroupReview,
+  deletePin,
+  updateGroupReview,
+  updatePin,
+} from "@/app/actions/pins";
 import { CreateEventForm } from "@/components/CreateEventForm";
 import { EventRoom } from "@/components/EventRoom";
-import { NormReminder } from "@/components/NormReminder";
+import {
+  ReviewCommentTree,
+  type ThreadComment,
+} from "@/components/ReviewCommentTree";
 import { loadEventRoomPayload } from "@/lib/events/event-room-data";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -42,13 +50,9 @@ type ReviewRow = {
   source_event_id: string | null;
 };
 
-type CommentRow = {
-  id: string;
-  review_id: string;
-  author_id: string;
-  body: string;
-  created_at: string;
-};
+type CommentRow = ThreadComment;
+
+type AuthorProfile = { display_name: string; avatar_url: string | null };
 
 type EventRow = {
   id: string;
@@ -58,99 +62,8 @@ type EventRow = {
   status: string;
   blurb: string;
   planner_id: string;
+  members_can_invite_friends: boolean;
 };
-
-function groupCommentsByReview(rows: CommentRow[]) {
-  const m = new Map<string, CommentRow[]>();
-  for (const c of rows) {
-    const list = m.get(c.review_id) ?? [];
-    list.push(c);
-    m.set(c.review_id, list);
-  }
-  return m;
-}
-
-function ReviewThread({
-  reviewId,
-  comments,
-  authorNames,
-  onPosted,
-}: {
-  reviewId: string;
-  comments: CommentRow[];
-  authorNames: Map<string, string>;
-  onPosted: () => void;
-}) {
-  const [body, setBody] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!body.trim()) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      await createReviewComment(reviewId, body);
-      setBody("");
-      onPosted();
-    } catch (er) {
-      setErr(er instanceof Error ? er.message : "Could not post");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="mt-6 border-t border-zinc-200/80 pt-6 dark:border-zinc-700">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700/90 dark:text-emerald-300">
-        Discussion
-      </p>
-      <ul className="mt-3 space-y-3">
-        {comments.length === 0 ? (
-          <li className="text-sm text-zinc-500">No comments yet.</li>
-        ) : (
-          comments.map((c) => (
-            <li
-              key={c.id}
-              className="rounded-2xl border border-zinc-200/80 bg-white/60 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900/40"
-            >
-              <div className="flex flex-wrap items-baseline gap-x-2 text-xs text-zinc-500">
-                <span className="font-medium text-zinc-700 dark:text-zinc-300">
-                  {authorNames.get(c.author_id) ?? "Member"}
-                </span>
-                <span>{new Date(c.created_at).toLocaleString()}</span>
-              </div>
-              <p className="mt-1 whitespace-pre-wrap text-zinc-800 dark:text-zinc-200">
-                {c.body}
-              </p>
-            </li>
-          ))
-        )}
-      </ul>
-      <form onSubmit={(e) => void submit(e)} className="mt-4 space-y-2">
-        <NormReminder context="review" />
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Add a comment…"
-          rows={3}
-          className="w-full rounded-xl border border-zinc-200/90 bg-white/70 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900/50"
-        />
-        {err ? (
-          <p className="text-sm text-red-600 dark:text-red-400">{err}</p>
-        ) : null}
-        <button
-          type="submit"
-          disabled={busy || !body.trim()}
-          className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {busy ? "Posting…" : "Post comment"}
-        </button>
-      </form>
-    </div>
-  );
-}
 
 type HomeSection = "events" | "reviews";
 
@@ -171,9 +84,14 @@ export function PinDetailPanel({
   const [pin, setPin] = useState<PinRow | null>(null);
   const [groupReviews, setGroupReviews] = useState<ReviewRow[]>([]);
   const [commentRows, setCommentRows] = useState<CommentRow[]>([]);
-  const [authorNames, setAuthorNames] = useState<Map<string, string>>(
-    () => new Map(),
-  );
+  const [authorProfiles, setAuthorProfiles] = useState<
+    Map<string, AuthorProfile>
+  >(() => new Map());
+  const [pinTitleEdit, setPinTitleEdit] = useState("");
+  const [editingPin, setEditingPin] = useState(false);
+  const [groupReviewEdit, setGroupReviewEdit] = useState(false);
+  const [groupTitle, setGroupTitle] = useState("");
+  const [groupBody, setGroupBody] = useState("");
   const [events, setEvents] = useState<EventRow[]>([]);
   const [plannerByEventId, setPlannerByEventId] = useState<
     Map<string, string>
@@ -227,7 +145,9 @@ export function PinDetailPanel({
       return;
     }
 
-    setPin(pinRow as PinRow);
+    const pr = pinRow as PinRow;
+    setPin(pr);
+    setPinTitleEdit(pr.title);
 
     const { data: reviewsData } = await supabase
       .from("reviews")
@@ -254,7 +174,9 @@ export function PinDetailPanel({
     const { data: commentsData } = reviewIds.length
       ? await supabase
           .from("review_comments")
-          .select("id, review_id, author_id, body, created_at")
+          .select(
+            "id, review_id, author_id, body, created_at, parent_id, thread_anchor_user_id",
+          )
           .in("review_id", reviewIds)
           .order("created_at", { ascending: true })
       : { data: [] as CommentRow[] };
@@ -262,26 +184,50 @@ export function PinDetailPanel({
     const cRows = (commentsData ?? []) as CommentRow[];
     setCommentRows(cRows);
 
+    const memberIdsFromSummaries = [
+      ...new Set(
+        revs.flatMap((r) =>
+          (r.member_summaries ?? []).map((m) => m.user_id),
+        ),
+      ),
+    ];
     const commentAuthorIds = [...new Set(cRows.map((c) => c.author_id))];
-    const { data: profiles } = commentAuthorIds.length
+    const allProfileIds = [
+      ...new Set([...commentAuthorIds, ...memberIdsFromSummaries]),
+    ];
+    const { data: profiles } = allProfileIds.length
       ? await supabase
           .from("profiles")
-          .select("id, display_name")
-          .in("id", commentAuthorIds)
-      : { data: [] as { id: string; display_name: string }[] };
+          .select("id, display_name, avatar_url")
+          .in("id", allProfileIds)
+      : { data: [] as { id: string; display_name: string; avatar_url: string | null }[] };
 
-    setAuthorNames(
-      new Map((profiles ?? []).map((p) => [p.id, p.display_name])),
+    setAuthorProfiles(
+      new Map(
+        (profiles ?? []).map((p) => [
+          p.id,
+          { display_name: p.display_name, avatar_url: p.avatar_url },
+        ]),
+      ),
     );
 
     const { data: eventsData } = await supabase
       .from("events")
-      .select("id, starts_at, capacity, visibility, status, blurb, planner_id")
+      .select(
+        "id, starts_at, capacity, visibility, status, blurb, planner_id, members_can_invite_friends",
+      )
       .eq("pin_id", pinId)
       .in("status", ["scheduled", "live", "review_open"])
       .order("starts_at", { ascending: true });
 
-    setEvents((eventsData ?? []) as EventRow[]);
+    setEvents(
+      (eventsData ?? []).map((e) => ({
+        ...e,
+        members_can_invite_friends: Boolean(
+          (e as EventRow).members_can_invite_friends,
+        ),
+      })) as EventRow[],
+    );
 
     const sourceIds = [
       ...new Set(
@@ -347,8 +293,6 @@ export function PinDetailPanel({
     };
   }, [eventIdParam, myUserId]);
 
-  const commentsByReview = groupCommentsByReview(commentRows);
-
   const activeReview = useMemo(
     () => groupReviews.find((r) => r.id === reviewIdParam) ?? null,
     [groupReviews, reviewIdParam],
@@ -379,6 +323,18 @@ export function PinDetailPanel({
     if (v == null || Number.isNaN(Number(v))) return null;
     return Number(v).toFixed(1);
   }
+
+  const isHostOfActiveReview =
+    !!activeReview?.source_event_id &&
+    plannerByEventId.get(activeReview.source_event_id) === myUserId;
+
+  useEffect(() => {
+    if (activeReview) {
+      setGroupTitle(activeReview.title ?? "");
+      setGroupBody(activeReview.body);
+      setGroupReviewEdit(false);
+    }
+  }, [activeReview?.id, activeReview?.title, activeReview?.body]);
 
   return (
     <>
@@ -471,15 +427,6 @@ export function PinDetailPanel({
                 <p className="text-sm text-zinc-800 dark:text-zinc-200">
                   {eventPayload.data.event.blurb}
                 </p>
-                {eventPayload.data.event.visibility === "private" &&
-                eventPayload.data.isPlanner ? (
-                  <p className="break-all text-xs text-zinc-500">
-                    Invite:{" "}
-                    {typeof window !== "undefined"
-                      ? `${window.location.origin}/join?t=${eventPayload.data.event.invite_token ?? ""}`
-                      : `/join?t=${eventPayload.data.event.invite_token ?? ""}`}
-                  </p>
-                ) : null}
                 <EventRoom
                   eventId={eventIdParam}
                   pinId={pin.id}
@@ -494,6 +441,17 @@ export function PinDetailPanel({
                   initialContributions={eventPayload.data.contributions}
                   showBackToPinLink={false}
                   onRefreshRoot={() => void reloadEventPayload()}
+                  onEventDeleted={() => {
+                    mapQuery({ event: null });
+                    void load();
+                  }}
+                  plannerProfile={eventPayload.data.plannerProfile}
+                  eventStartsAt={eventPayload.data.event.starts_at}
+                  eventBlurb={eventPayload.data.event.blurb}
+                  eventCapacity={eventPayload.data.event.capacity}
+                  membersCanInviteFriends={Boolean(
+                    eventPayload.data.event.members_can_invite_friends,
+                  )}
                 />
               </div>
             )
@@ -520,6 +478,91 @@ export function PinDetailPanel({
                   {new Date(activeReview.created_at).toLocaleDateString()}
                 </span>
               </div>
+              {isHostOfActiveReview ? (
+                <div className="mt-4 rounded-2xl border border-zinc-200/80 p-3 dark:border-zinc-700">
+                  {!groupReviewEdit ? (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setGroupReviewEdit(true)}
+                        className="rounded-xl border border-zinc-200 px-3 py-1.5 text-sm dark:border-zinc-600"
+                      >
+                        Edit published summary
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (
+                            !confirm(
+                              "Delete this group review for everyone? This cannot be undone.",
+                            )
+                          )
+                            return;
+                          void (async () => {
+                            try {
+                              await deleteGroupReview(activeReview.id);
+                              mapQuery({ review: null });
+                              await load();
+                            } catch {
+                              /* toast */
+                            }
+                          })();
+                        }}
+                        className="rounded-xl border border-red-200 px-3 py-1.5 text-sm text-red-700 dark:border-red-900 dark:text-red-400"
+                      >
+                        Delete group review
+                      </button>
+                    </div>
+                  ) : (
+                    <form
+                      className="space-y-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void (async () => {
+                          try {
+                            await updateGroupReview(activeReview.id, {
+                              title: groupTitle || null,
+                              body: groupBody,
+                            });
+                            setGroupReviewEdit(false);
+                            await load();
+                          } catch {
+                            /* */
+                          }
+                        })();
+                      }}
+                    >
+                      <input
+                        value={groupTitle}
+                        onChange={(e) => setGroupTitle(e.target.value)}
+                        placeholder="Title"
+                        className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
+                      />
+                      <textarea
+                        value={groupBody}
+                        onChange={(e) => setGroupBody(e.target.value)}
+                        rows={6}
+                        className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          className="rounded-xl bg-emerald-600 px-3 py-1.5 text-sm text-white"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setGroupReviewEdit(false)}
+                          className="text-sm text-zinc-500"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              ) : null}
               <pre className="mt-4 whitespace-pre-wrap font-sans text-sm text-zinc-800 dark:text-zinc-200">
                 {activeReview.body}
               </pre>
@@ -546,12 +589,18 @@ export function PinDetailPanel({
                   </ul>
                 </div>
               ) : null}
-              <ReviewThread
-                reviewId={activeReview.id}
-                comments={commentsByReview.get(activeReview.id) ?? []}
-                authorNames={authorNames}
-                onPosted={load}
-              />
+              {myUserId ? (
+                <ReviewCommentTree
+                  reviewId={activeReview.id}
+                  comments={commentRows.filter(
+                    (c) => c.review_id === activeReview.id,
+                  )}
+                  memberSummaries={activeReview.member_summaries ?? []}
+                  authors={authorProfiles}
+                  myUserId={myUserId}
+                  onRefresh={() => void load()}
+                />
+              ) : null}
             </div>
           ) : null}
 
@@ -559,6 +608,86 @@ export function PinDetailPanel({
           pin &&
           !eventIdParam && !reviewIdParam ? (
             <>
+              {pin.created_by === myUserId ? (
+                <div className="mb-5 rounded-2xl border border-zinc-200/80 bg-white/70 p-4 dark:border-zinc-700 dark:bg-zinc-900/50">
+                  {!editingPin ? (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingPin(true)}
+                        className="rounded-xl border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-600"
+                      >
+                        Edit place name
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (
+                            !confirm(
+                              "Delete this place and its events from the map?",
+                            )
+                          )
+                            return;
+                          void (async () => {
+                            try {
+                              await deletePin(pin.id);
+                              onClose();
+                            } catch {
+                              /* */
+                            }
+                          })();
+                        }}
+                        className="rounded-xl border border-red-200 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:text-red-400"
+                      >
+                        Delete place
+                      </button>
+                    </div>
+                  ) : (
+                    <form
+                      className="flex flex-col gap-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void (async () => {
+                          try {
+                            await updatePin(pin.id, {
+                              title: pinTitleEdit.trim(),
+                            });
+                            setEditingPin(false);
+                            await load();
+                          } catch {
+                            /* */
+                          }
+                        })();
+                      }}
+                    >
+                      <input
+                        value={pinTitleEdit}
+                        onChange={(e) => setPinTitleEdit(e.target.value)}
+                        className="rounded-xl border border-zinc-200 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          className="rounded-xl bg-emerald-600 px-3 py-2 text-sm text-white"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingPin(false);
+                            setPinTitleEdit(pin.title);
+                          }}
+                          className="text-sm text-zinc-500"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              ) : null}
+
               <div className="flex rounded-2xl border border-zinc-200/90 bg-white/50 p-0.5 dark:border-zinc-700 dark:bg-zinc-900/40">
                 <button
                   type="button"

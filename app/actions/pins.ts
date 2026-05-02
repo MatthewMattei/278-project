@@ -19,19 +19,122 @@ export async function createPin(lat: number, lng: number, title: string) {
   return data.id as string;
 }
 
-/** Thread comment on a published group review (pin panel). */
-export async function createReviewComment(reviewId: string, body: string) {
+export async function updatePin(
+  pinId: string,
+  input: { title?: string; lat?: number; lng?: number },
+) {
   const supabase = await createClient();
   const user = await requireUserWithProfile(supabase);
 
+  const { error } = await supabase
+    .from("pins")
+    .update(input)
+    .eq("id", pinId)
+    .eq("created_by", user.id);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/map");
+}
+
+export async function deletePin(pinId: string) {
+  const supabase = await createClient();
+  const user = await requireUserWithProfile(supabase);
+
+  const { error } = await supabase
+    .from("pins")
+    .delete()
+    .eq("id", pinId)
+    .eq("created_by", user.id);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/map");
+}
+
+/** Threaded comment on a published group review. */
+export async function createReviewComment(input: {
+  reviewId: string;
+  body: string;
+  parentId?: string | null;
+  threadAnchorUserId?: string | null;
+}) {
+  const supabase = await createClient();
+  const user = await requireUserWithProfile(supabase);
+
+  const trimmed = input.body.trim();
+  if (!trimmed) throw new Error("Comment cannot be empty");
+
+  const row: Record<string, unknown> = {
+    review_id: input.reviewId,
+    author_id: user.id,
+    body: trimmed,
+  };
+  if (input.parentId) row.parent_id = input.parentId;
+  if (input.threadAnchorUserId && !input.parentId) {
+    row.thread_anchor_user_id = input.threadAnchorUserId;
+  }
+
+  const { error } = await supabase.from("review_comments").insert(row);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/map");
+}
+
+export async function updateReviewComment(commentId: string, body: string) {
+  const supabase = await createClient();
+  const user = await requireUserWithProfile(supabase);
   const trimmed = body.trim();
   if (!trimmed) throw new Error("Comment cannot be empty");
 
-  const { error } = await supabase.from("review_comments").insert({
-    review_id: reviewId,
-    author_id: user.id,
-    body: trimmed,
-  });
+  const { error } = await supabase
+    .from("review_comments")
+    .update({ body: trimmed })
+    .eq("id", commentId)
+    .eq("author_id", user.id);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/map");
+}
+
+export async function deleteReviewComment(commentId: string) {
+  const supabase = await createClient();
+  const user = await requireUserWithProfile(supabase);
+
+  const { error } = await supabase
+    .from("review_comments")
+    .delete()
+    .eq("id", commentId)
+    .eq("author_id", user.id);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/map");
+}
+
+export async function updateGroupReview(
+  reviewId: string,
+  input: { title?: string | null; body?: string },
+) {
+  const supabase = await createClient();
+  await requireUserWithProfile(supabase);
+
+  const { error } = await supabase
+    .from("reviews")
+    .update(input)
+    .eq("id", reviewId)
+    .eq("scope", "group");
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/map");
+}
+
+export async function deleteGroupReview(reviewId: string) {
+  const supabase = await createClient();
+  await requireUserWithProfile(supabase);
+
+  const { error } = await supabase
+    .from("reviews")
+    .delete()
+    .eq("id", reviewId)
+    .eq("scope", "group");
 
   if (error) throw new Error(error.message);
   revalidatePath("/map");

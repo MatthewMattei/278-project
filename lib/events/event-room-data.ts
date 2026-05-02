@@ -42,10 +42,17 @@ export type EventRoomEventRow = {
   status: string;
   blurb: string;
   invite_token: string | null;
+  members_can_invite_friends: boolean;
+};
+
+export type PlannerProfile = {
+  display_name: string;
+  avatar_url: string | null;
 };
 
 export type EventRoomPayload = {
   event: EventRoomEventRow;
+  plannerProfile: PlannerProfile | null;
   isMember: boolean;
   isPlanner: boolean;
   messages: EventRoomMessage[];
@@ -62,7 +69,7 @@ export async function loadEventRoomPayload(
   const { data: event, error } = await supabase
     .from("events")
     .select(
-      "id, pin_id, planner_id, starts_at, capacity, visibility, status, blurb, invite_token",
+      "id, pin_id, planner_id, starts_at, capacity, visibility, status, blurb, invite_token, members_can_invite_friends",
     )
     .eq("id", eventId)
     .single();
@@ -71,7 +78,21 @@ export async function loadEventRoomPayload(
     return { ok: false, reason: "not_found" };
   }
 
-  const ev = event as EventRoomEventRow;
+  const raw = event as Record<string, unknown>;
+  const ev = {
+    ...raw,
+    members_can_invite_friends: Boolean(raw.members_can_invite_friends),
+  } as EventRoomEventRow;
+
+  const { data: plannerRow } = await supabase
+    .from("profiles")
+    .select("display_name, avatar_url")
+    .eq("id", ev.planner_id)
+    .maybeSingle();
+
+  const plannerProfile = plannerRow
+    ? (plannerRow as PlannerProfile)
+    : null;
 
   const { data: membership } = await supabase
     .from("event_members")
@@ -113,6 +134,7 @@ export async function loadEventRoomPayload(
     ok: true,
     data: {
       event: ev,
+      plannerProfile,
       isMember,
       isPlanner,
       messages: (messages ?? []) as EventRoomMessage[],

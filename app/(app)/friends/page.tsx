@@ -1,5 +1,7 @@
 import { AcceptFriendButton } from "@/components/AcceptFriendButton";
+import { AvatarImg } from "@/components/AvatarImg";
 import { FriendSearch } from "@/components/FriendSearch";
+import { RemoveFriendButton } from "@/components/RemoveFriendButton";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function FriendsPage() {
@@ -27,11 +29,11 @@ export default async function FriendsPage() {
   const { data: profiles } = otherIds.length
     ? await supabase
         .from("profiles")
-        .select("id, display_name")
+        .select("id, display_name, avatar_url")
         .in("id", otherIds)
-    : { data: [] as { id: string; display_name: string }[] };
+    : { data: [] as { id: string; display_name: string; avatar_url: string | null }[] };
 
-  const nameById = new Map((profiles ?? []).map((p) => [p.id, p.display_name]));
+  const profileById = new Map((profiles ?? []).map((p) => [p.id, p]));
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
@@ -60,20 +62,33 @@ export default async function FriendsPage() {
                 f.requester_id === user.id ? f.addressee_id : f.requester_id;
               const incoming =
                 f.status === "pending" && f.addressee_id === user.id;
+              const op = profileById.get(otherId);
               return (
                 <li
                   key={f.id}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-zinc-200/80 bg-white/70 p-4 dark:border-zinc-700 dark:bg-zinc-900/50"
                 >
-                  <div>
-                    <span className="font-medium text-zinc-900 dark:text-zinc-50">
-                      {nameById.get(otherId) ?? otherId.slice(0, 8) + "…"}
-                    </span>
-                    <span className="ml-2 text-xs uppercase tracking-wide text-zinc-500">
-                      {f.status}
-                    </span>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <AvatarImg
+                      src={op?.avatar_url}
+                      alt={op?.display_name ?? "Friend"}
+                      size={40}
+                    />
+                    <div className="min-w-0">
+                      <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                        {op?.display_name ?? otherId.slice(0, 8) + "…"}
+                      </span>
+                      <span className="ml-2 text-xs uppercase tracking-wide text-zinc-500">
+                        {f.status}
+                      </span>
+                    </div>
                   </div>
-                  {incoming ? <AcceptFriendButton friendshipId={f.id} /> : null}
+                  <div className="flex items-center gap-2">
+                    {incoming ? <AcceptFriendButton friendshipId={f.id} /> : null}
+                    {f.status === "accepted" ? (
+                      <RemoveFriendButton friendshipId={f.id} />
+                    ) : null}
+                  </div>
                 </li>
               );
             })

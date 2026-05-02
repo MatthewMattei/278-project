@@ -37,3 +37,20 @@ export async function acceptFriendship(friendshipId: string) {
   if (error) throw new Error(error.message);
   revalidatePath("/friends");
 }
+
+export async function removeFriendship(friendshipId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const { error } = await supabase
+    .from("friendships")
+    .delete()
+    .eq("id", friendshipId)
+    .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/friends");
+}

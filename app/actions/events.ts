@@ -12,6 +12,7 @@ export async function createEvent(input: {
   capacity: number;
   visibility: "public" | "private";
   blurb: string;
+  membersCanInviteFriends?: boolean;
 }) {
   const supabase = await createClient();
   const user = await requireUserWithProfile(supabase);
@@ -26,6 +27,10 @@ export async function createEvent(input: {
       visibility: input.visibility,
       blurb: input.blurb,
       status: "scheduled",
+      members_can_invite_friends:
+        input.visibility === "private"
+          ? Boolean(input.membersCanInviteFriends)
+          : false,
     })
     .select("id, invite_token")
     .single();
@@ -34,6 +39,66 @@ export async function createEvent(input: {
   revalidatePath("/map");
   revalidatePath(`/events/${data.id}`);
   return data as { id: string; invite_token: string };
+}
+
+export async function updateEventDetails(
+  eventId: string,
+  input: {
+    blurb?: string;
+    capacity?: number;
+    startsAt?: string;
+    membersCanInviteFriends?: boolean;
+  },
+) {
+  const supabase = await createClient();
+  const user = await requireUserWithProfile(supabase);
+
+  const patch: Record<string, unknown> = {};
+  if (input.blurb !== undefined) patch.blurb = input.blurb;
+  if (input.capacity !== undefined) patch.capacity = input.capacity;
+  if (input.startsAt !== undefined) patch.starts_at = input.startsAt;
+  if (input.membersCanInviteFriends !== undefined) {
+    patch.members_can_invite_friends = input.membersCanInviteFriends;
+  }
+
+  const { error } = await supabase
+    .from("events")
+    .update(patch)
+    .eq("id", eventId)
+    .eq("planner_id", user.id);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/map");
+  revalidatePath(`/events/${eventId}`);
+}
+
+export async function deleteEvent(eventId: string) {
+  const supabase = await createClient();
+  const user = await requireUserWithProfile(supabase);
+
+  const { error } = await supabase
+    .from("events")
+    .delete()
+    .eq("id", eventId)
+    .eq("planner_id", user.id);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/map");
+}
+
+export async function addPrivateEventGuest(eventId: string, guestUserId: string) {
+  const supabase = await createClient();
+  await requireUserWithProfile(supabase);
+
+  const { data, error } = await supabase.rpc("add_private_event_guest", {
+    p_event_id: eventId,
+    p_guest_user_id: guestUserId,
+  });
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/map");
+  revalidatePath(`/events/${eventId}`);
+  return data;
 }
 
 export async function joinPublicEvent(eventId: string) {
@@ -176,6 +241,24 @@ export async function submitContribution(
     body,
     rating,
   });
+
+  if (error) throw new Error(error.message);
+  revalidatePath(`/events/${eventId}`);
+}
+
+export async function updateContribution(
+  eventId: string,
+  body: string,
+  rating: number,
+) {
+  const supabase = await createClient();
+  const user = await requireUserWithProfile(supabase);
+
+  const { error } = await supabase
+    .from("review_contributions")
+    .update({ body, rating })
+    .eq("event_id", eventId)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
   revalidatePath(`/events/${eventId}`);

@@ -11,7 +11,7 @@ export default async function ProfilePage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, friend_code")
+    .select("display_name, friend_code, avatar_url")
     .eq("id", user.id)
     .single();
 
@@ -33,7 +33,10 @@ export default async function ProfilePage() {
           <FriendCodeCopy code={friendCode} />
         </div>
         <div className="mt-8">
-          <ProfileForm initialDisplayName={profile?.display_name ?? ""} />
+          <ProfileForm
+            initialDisplayName={profile?.display_name ?? ""}
+            initialAvatarUrl={profile?.avatar_url ?? null}
+          />
         </div>
       </div>
     </div>
