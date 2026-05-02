@@ -21,25 +21,21 @@ export async function createPin(lat: number, lng: number, title: string) {
   return data.id as string;
 }
 
-export async function createIndividualReview(
-  pinId: string,
-  body: string,
-  rating: number,
-  title?: string,
-) {
+/** Thread comment on a published group review (pin panel). */
+export async function createReviewComment(reviewId: string, body: string) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
 
-  const { error } = await supabase.from("reviews").insert({
-    pin_id: pinId,
-    scope: "individual",
+  const trimmed = body.trim();
+  if (!trimmed) throw new Error("Comment cannot be empty");
+
+  const { error } = await supabase.from("review_comments").insert({
+    review_id: reviewId,
     author_id: user.id,
-    body,
-    rating,
-    title: title ?? null,
+    body: trimmed,
   });
 
   if (error) throw new Error(error.message);

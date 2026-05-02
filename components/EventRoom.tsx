@@ -179,7 +179,6 @@ export function EventRoom({
   const reactionCount = useMemo(() => {
     const map = new Map<string, Map<string, number>>();
     for (const react of reactions) {
-      const key = `${react.message_id}:${react.emoji}`;
       if (!map.has(react.message_id)) map.set(react.message_id, new Map());
       const inner = map.get(react.message_id)!;
       inner.set(react.emoji, (inner.get(react.emoji) ?? 0) + 1);
@@ -280,8 +279,10 @@ export function EventRoom({
     );
   }
 
+  const reviewOpen = status === "review_open";
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       {isPlanner ? (
         <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
           <button
@@ -299,6 +300,12 @@ export function EventRoom({
           <button
             type="button"
             className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm text-white"
+            disabled={reviewOpen}
+            title={
+              reviewOpen
+                ? "Review already open"
+                : "Replace chat with group review for everyone"
+            }
             onClick={() =>
               void (async () => {
                 await openReviewWindow(eventId);
@@ -306,7 +313,7 @@ export function EventRoom({
               })()
             }
           >
-            Open review window
+            Open group review
           </button>
           <button
             type="button"
@@ -318,156 +325,212 @@ export function EventRoom({
               })()
             }
           >
-            Close review & publish group summary
+            Close review & publish summary
           </button>
         </div>
       ) : null}
 
-      <section>
-        <h2 className="text-lg font-semibold">Planner updates</h2>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Only the planner posts messages. React with emoji or vote in polls.
-        </p>
-        <ul className="mt-4 space-y-4">
-          {messages.map((msg) => (
-            <li
-              key={msg.id}
-              className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800"
-            >
-              <div className="text-xs uppercase text-zinc-500">{msg.kind}</div>
-              <p className="mt-1 text-zinc-900 dark:text-zinc-100">{msg.body}</p>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {EMOJIS.map((em) => (
-                  <button
-                    key={em}
-                    type="button"
-                    className="rounded border border-zinc-200 px-2 py-0.5 text-sm dark:border-zinc-700"
-                    onClick={() => void onReact(msg.id, em)}
-                  >
-                    {em}{" "}
-                    {reactionCount.get(msg.id)?.get(em) ?? 0}
-                  </button>
-                ))}
-              </div>
-            </li>
-          ))}
-        </ul>
-
-        {isPlanner ? (
-          <form onSubmit={(e) => void onBroadcast(e)} className="mt-4 space-y-2">
-            <textarea
-              value={broadcast}
-              onChange={(e) => setBroadcast(e.target.value)}
-              placeholder="Logistics, meeting point, timing…"
-              rows={3}
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
-            />
-            <button
-              type="submit"
-              disabled={busy}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm text-white"
-            >
-              Broadcast
-            </button>
-          </form>
-        ) : null}
-      </section>
-
-      <section>
-        <h2 className="text-lg font-semibold">Polls</h2>
-        {polls.map((poll) => (
-          <PollBlock key={poll.id} poll={poll} onVote={onVote} />
-        ))}
-        {isPlanner ? (
-          <form onSubmit={(e) => void onCreatePoll(e)} className="mt-4 space-y-2">
-            <input
-              value={pollQ}
-              onChange={(e) => setPollQ(e.target.value)}
-              placeholder="Question"
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
-            />
-            <textarea
-              value={pollOpts}
-              onChange={(e) => setPollOpts(e.target.value)}
-              placeholder="One option per line"
-              rows={3}
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
-            />
-            <button
-              type="submit"
-              disabled={busy}
-              className="rounded-lg bg-zinc-800 px-4 py-2 text-sm text-white dark:bg-zinc-200 dark:text-zinc-900"
-            >
-              Create poll
-            </button>
-          </form>
-        ) : null}
-      </section>
-
-      {status === "review_open" ? (
-        <section className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-900 dark:bg-emerald-950/30">
-          <h2 className="text-lg font-semibold">Review window</h2>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Submit once. Be constructive — see guidelines.
-          </p>
-          {myContribution ? (
-            <p className="mt-2 text-sm">You submitted your review.</p>
-          ) : (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void (async () => {
-                  setBusy(true);
-                  try {
-                    await submitContribution(eventId, revBody, revRating);
-                    setRevBody("");
-                    router.refresh();
-                  } catch (er) {
-                    setErr(
-                      er instanceof Error ? er.message : "Could not submit",
-                    );
-                  } finally {
-                    setBusy(false);
-                  }
-                })();
-              }}
-              className="mt-3 space-y-2"
-            >
-              <select
-                value={revRating}
-                onChange={(e) => setRevRating(Number(e.target.value))}
-                className="rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+      {reviewOpen ? (
+        <div className="flex max-h-[min(720px,85vh)] min-h-[320px] flex-col overflow-hidden rounded-xl border-2 border-emerald-300 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/25">
+          <div className="shrink-0 border-b border-emerald-200 px-4 py-3 dark:border-emerald-900">
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+              Group review
+            </h2>
+            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+              This event is in review — share your honest take. Be constructive;
+              see community guidelines.
+            </p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            {myContribution ? (
+              <p className="text-sm text-zinc-700 dark:text-zinc-300">
+                You submitted your review. Thanks.
+              </p>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void (async () => {
+                    setBusy(true);
+                    setErr(null);
+                    try {
+                      await submitContribution(eventId, revBody, revRating);
+                      setRevBody("");
+                      await reload();
+                      router.refresh();
+                    } catch (er) {
+                      setErr(
+                        er instanceof Error ? er.message : "Could not submit",
+                      );
+                    } finally {
+                      setBusy(false);
+                    }
+                  })();
+                }}
+                className="space-y-3"
               >
-                {[5, 4, 3, 2, 1].map((n) => (
-                  <option key={n} value={n}>
-                    {n}/5
-                  </option>
-                ))}
-              </select>
+                <div>
+                  <label className="block text-sm font-medium">Rating</label>
+                  <select
+                    value={revRating}
+                    onChange={(e) => setRevRating(Number(e.target.value))}
+                    className="mt-1 rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                  >
+                    {[5, 4, 3, 2, 1].map((n) => (
+                      <option key={n} value={n}>
+                        {n}/5
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium">
+                    Your review
+                  </label>
+                  <textarea
+                    required
+                    value={revBody}
+                    onChange={(e) => setRevBody(e.target.value)}
+                    rows={5}
+                    className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {busy ? "Submitting…" : "Submit review"}
+                </button>
+              </form>
+            )}
+            <ul className="mt-6 space-y-2 border-t border-emerald-200/80 pt-4 text-sm text-zinc-600 dark:border-emerald-900 dark:text-zinc-400">
+              <li className="text-xs font-medium uppercase text-zinc-500">
+                Submissions ({contributions.length})
+              </li>
+              {contributions.map((c) => (
+                <li key={c.user_id}>
+                  {c.user_id === myUserId ? "You" : "Member"} — {c.rating}/5
+                  {c.body ? (
+                    <span className="block text-zinc-500">
+                      {c.body.slice(0, 120)}
+                      {c.body.length > 120 ? "…" : ""}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : (
+        <div className="flex max-h-[min(560px,70vh)] min-h-[280px] flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+          <div className="shrink-0 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+              Event chat
+            </h2>
+            <p className="mt-0.5 text-sm text-zinc-500">
+              Only the event creator can post updates. Everyone in the event can
+              react with emoji.
+            </p>
+          </div>
+          <ul className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+            {messages.length === 0 ? (
+              <li className="text-sm text-zinc-500">
+                No messages yet.{isPlanner ? " Post an update below." : ""}
+              </li>
+            ) : (
+              messages.map((msg) => (
+                <li
+                  key={msg.id}
+                  className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 dark:border-zinc-700 dark:bg-zinc-900/50"
+                >
+                  <div className="text-xs uppercase text-zinc-500">
+                    {msg.kind === "planner_broadcast"
+                      ? "Planner"
+                      : msg.kind}
+                  </div>
+                  <p className="mt-1 text-zinc-900 dark:text-zinc-100">
+                    {msg.body}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {EMOJIS.map((em) => (
+                      <button
+                        key={em}
+                        type="button"
+                        className="rounded border border-zinc-200 px-2 py-0.5 text-sm dark:border-zinc-700"
+                        onClick={() => void onReact(msg.id, em)}
+                      >
+                        {em}{" "}
+                        {reactionCount.get(msg.id)?.get(em) ?? 0}
+                      </button>
+                    ))}
+                  </div>
+                </li>
+              ))
+            )}
+          </ul>
+          {isPlanner ? (
+            <form
+              onSubmit={(e) => void onBroadcast(e)}
+              className="shrink-0 border-t border-zinc-200 p-3 dark:border-zinc-800"
+            >
               <textarea
-                required
-                value={revBody}
-                onChange={(e) => setRevBody(e.target.value)}
-                rows={4}
+                value={broadcast}
+                onChange={(e) => setBroadcast(e.target.value)}
+                placeholder="Updates for everyone — logistics, timing, meeting spot…"
+                rows={3}
                 className="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
               />
               <button
                 type="submit"
                 disabled={busy}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm text-white"
+                className="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
-                Submit review
+                Send
               </button>
             </form>
-          )}
-          <ul className="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
-            {contributions.map((c) => (
-              <li key={c.user_id}>
-                {c.user_id === myUserId ? "You" : "Member"} — {c.rating}/5
-              </li>
+          ) : null}
+        </div>
+      )}
+
+      {!reviewOpen ? (
+        <details className="rounded-xl border border-zinc-200 dark:border-zinc-800">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-800 dark:text-zinc-200">
+            Polls (optional)
+          </summary>
+          <div className="border-t border-zinc-200 px-4 pb-4 pt-2 dark:border-zinc-800">
+            {polls.map((poll) => (
+              <PollBlock key={poll.id} poll={poll} onVote={onVote} />
             ))}
-          </ul>
-        </section>
+            {isPlanner ? (
+              <form
+                onSubmit={(e) => void onCreatePoll(e)}
+                className="mt-4 space-y-2"
+              >
+                <input
+                  value={pollQ}
+                  onChange={(e) => setPollQ(e.target.value)}
+                  placeholder="Question"
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                />
+                <textarea
+                  value={pollOpts}
+                  onChange={(e) => setPollOpts(e.target.value)}
+                  placeholder="One option per line"
+                  rows={3}
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                />
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="rounded-lg bg-zinc-800 px-4 py-2 text-sm text-white dark:bg-zinc-200 dark:text-zinc-900"
+                >
+                  Create poll
+                </button>
+              </form>
+            ) : null}
+          </div>
+        </details>
       ) : null}
 
       {err ? (
@@ -477,7 +540,7 @@ export function EventRoom({
       <p className="text-sm">
         <a
           href={`/map?pin=${encodeURIComponent(pinId)}`}
-          className="text-emerald-700 underline"
+          className="text-emerald-700 underline dark:text-emerald-400"
         >
           Back to pin
         </a>

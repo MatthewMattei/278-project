@@ -9,11 +9,6 @@ export async function AppNav() {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { count } = await supabase
-    .from("notifications")
-    .select("*", { count: "exact", head: true })
-    .is("read_at", null);
-
   return (
     <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-3">
@@ -29,17 +24,6 @@ export async function AppNav() {
             className="hover:text-emerald-700 dark:hover:text-emerald-400"
           >
             Map
-          </Link>
-          <Link
-            href="/notifications"
-            className="hover:text-emerald-700 dark:hover:text-emerald-400"
-          >
-            Notifications
-            {count && count > 0 ? (
-              <span className="ml-1 rounded-full bg-emerald-600 px-1.5 py-0.5 text-xs text-white">
-                {count > 99 ? "99+" : count}
-              </span>
-            ) : null}
           </Link>
           <Link
             href="/profile"

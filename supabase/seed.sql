@@ -8,14 +8,9 @@ values
   (37.7849, -122.4094, 'Example: Casual lunch — budget ~$15/person', 'YOUR_USER_ID'),
   (37.7694, -122.4862, 'Example: Meet at the park entrance (pin) before walking', 'YOUR_USER_ID');
 
-insert into public.reviews (pin_id, scope, author_id, title, body, rating)
-select id, 'individual', 'YOUR_USER_ID',
-  'Thoughtful sample review',
-  'We spent about $40 for two. Staff were busy but friendly. Good for a quick group stop — confirm hours before you go.',
-  4
-from public.pins
-where title like 'Example:%'
-limit 1;
+-- Group reviews are created by the app after an event review window (service role).
+-- You can insert a sample group row only if you match a real event/pin; easier to
+-- use the UI: create an event, open/close the review window, and let amalgamation run.
 */
 
--- Uncomment and edit YOUR_USER_ID to seed example pins and one individual review.
+-- Uncomment and edit YOUR_USER_ID to seed example pins (optional).
