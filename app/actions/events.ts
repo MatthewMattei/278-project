@@ -256,15 +256,20 @@ export async function postPlannerBroadcast(eventId: string, body: string) {
   const supabase = await createClient();
   const user = await requireUserWithProfile(supabase);
 
-  const { error } = await supabase.from("event_messages").insert({
-    event_id: eventId,
-    author_id: user.id,
-    body,
-    kind: "planner_broadcast",
-  });
+  const { data, error } = await supabase
+    .from("event_messages")
+    .insert({
+      event_id: eventId,
+      author_id: user.id,
+      body,
+      kind: "planner_broadcast",
+    })
+    .select("id, body, kind, author_id, created_at")
+    .single();
 
   if (error) throw new Error(error.message);
   revalidatePath(`/events/${eventId}`);
+  return data;
 }
 
 export async function toggleReaction(messageId: string, emoji: string) {

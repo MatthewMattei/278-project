@@ -18,7 +18,7 @@ import { AvatarImg } from "@/components/AvatarImg";
 import { EventPrivateGuestPicker } from "@/components/EventPrivateGuestPicker";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   EventRoomMember,
@@ -109,6 +109,8 @@ export function EventRoom({
   const [polls, setPolls] = useState(initialPolls);
   const [pollVotes, setPollVotes] = useState(initialPollVotes);
   const [contributions, setContributions] = useState(initialContributions);
+  /** Avoid resetting chat state when parent passes new array refs with stale SSR payload. */
+  const syncedEventIdRef = useRef<string | null>(null);
   const [liveStatus, setLiveStatus] = useState(status);
   const myContribution = contributions.find((c) => c.user_id === myUserId);
   const [broadcast, setBroadcast] = useState("");
@@ -196,12 +198,15 @@ export function EventRoom({
   }, [status]);
 
   useEffect(() => {
+    if (syncedEventIdRef.current === eventId) return;
+    syncedEventIdRef.current = eventId;
     setMessages(initialMessages);
     setReactions(initialReactions);
     setPolls(initialPolls);
     setPollVotes(initialPollVotes);
     setContributions(initialContributions);
   }, [
+    eventId,
     initialMessages,
     initialReactions,
     initialPolls,
@@ -300,8 +305,17 @@ export function EventRoom({
     setBusy(true);
     setErr(null);
     try {
-      await postPlannerBroadcast(eventId, broadcast.trim());
+      const row = await postPlannerBroadcast(eventId, broadcast.trim());
       setBroadcast("");
+      if (row) {
+        setMessages((prev) =>
+          prev.some((m) => m.id === row.id)
+            ? prev
+            : [...prev, row as Message].sort((a, b) =>
+                a.created_at.localeCompare(b.created_at),
+              ),
+        );
+      }
       await reload();
     } catch (er) {
       setErr(er instanceof Error ? er.message : "Failed");
@@ -380,17 +394,6 @@ export function EventRoom({
       }
     })();
   }
-
-  const plannerHasContributed = contributions.some(
-    (c) => c.user_id === plannerId,
-  );
-  const memberSubmissionsLocked = plannerHasContributed && !isPlanner;
-
-  useEffect(() => {
-    if (liveStatus === "review_open" && memberSubmissionsLocked && editContrib) {
-      setEditContrib(false);
-    }
-  }, [liveStatus, memberSubmissionsLocked, editContrib]);
 
   const inEvent = isMember || isPlanner;
 
@@ -634,7 +637,7 @@ export function EventRoom({
             </h2>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
               {isPlanner
-                ? "When you submit your review, other members can no longer add or change theirs. Everyone sees this panel as soon as you open the window."
+                ? "While the window is open, everyone who joined can submit or edit their own review. The checklist below is only visible to you as host."
                 : "The review window is open — share your honest take. Be constructive; see community guidelines."}
             </p>
             {isPlanner ? (
@@ -675,32 +678,21 @@ export function EventRoom({
             ) : null}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-            {memberSubmissionsLocked && !myContribution ? (
-              <div className="rounded-lg border border-amber-200/90 bg-amber-50/90 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-                The host has submitted their review. New submissions from
-                members are closed for this event.
-              </div>
-            ) : null}
-
             {myContribution && !editContrib ? (
               <div className="space-y-2">
                 <p className="text-sm text-zinc-700 dark:text-zinc-300">
-                  You submitted your review ({myContribution.rating}/5).
-                  {isPlanner || !memberSubmissionsLocked
-                    ? " You can edit while this window is open."
-                    : " Editing closed after the host submitted."}
+                  You submitted your review ({myContribution.rating}/5). You can
+                  edit while this window is open.
                 </p>
-                {isPlanner || !memberSubmissionsLocked ? (
-                  <button
-                    type="button"
-                    onClick={() => setEditContrib(true)}
-                    className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-600"
-                  >
-                    Edit my review
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setEditContrib(true)}
+                  className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-600"
+                >
+                  Edit my review
+                </button>
               </div>
-            ) : !memberSubmissionsLocked || isPlanner ? (
+            ) : (
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -781,7 +773,7 @@ export function EventRoom({
                   ) : null}
                 </div>
               </form>
-            ) : null}
+            )}
             <ul className="mt-6 space-y-2 border-t border-emerald-200/80 pt-4 text-sm text-zinc-600 dark:border-emerald-900 dark:text-zinc-400">
               <li className="text-xs font-medium uppercase text-zinc-500">
                 Submissions ({contributions.length})
