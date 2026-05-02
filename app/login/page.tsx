@@ -72,7 +72,7 @@ export default function LoginPage() {
     const supabase = createClient();
     const origin = window.location.origin;
     const trimmedName = displayName.trim();
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: signUpEmail,
       password: signUpPassword,
       options: {
@@ -87,10 +87,21 @@ export default function LoginPage() {
       setMsg(error.message, "err");
       return;
     }
-    setMsg(
-      "Check your email to confirm your account (if confirmation is enabled), then sign in.",
-      "ok",
-    );
+    // If email confirmation is disabled this session exists immediately.
+    // Fallback sign-in keeps behavior stable if project settings change.
+    if (!data.session) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: signUpEmail,
+        password: signUpPassword,
+      });
+      if (signInError) {
+        setBusy(false);
+        setMsg(signInError.message, "err");
+        return;
+      }
+    }
+    router.replace("/map");
+    router.refresh();
   }
 
   function handleGuidelinesScroll() {
@@ -284,7 +295,7 @@ export default function LoginPage() {
                         className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-zinc-900 outline-none ring-emerald-500 focus:ring-2 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
                       />
                       <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                        Use an email you can access for account confirmation.
+                        Use the email you want to use for login.
                       </p>
                     </div>
                     <div>

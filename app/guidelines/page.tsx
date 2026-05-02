@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 export default function GuidelinesPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-12">
@@ -40,15 +38,6 @@ export default function GuidelinesPage() {
         Serious or repeated violations can result in suspension or a ban.
       </p>
 
-      <p className="mt-10">
-        <Link href="/login" className="text-emerald-700 underline dark:text-emerald-400">
-          Sign in
-        </Link>
-        {" · "}
-        <Link href="/map" className="text-emerald-700 underline dark:text-emerald-400">
-          Map
-        </Link>
-      </p>
     </div>
   );
 }
