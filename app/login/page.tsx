@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 type Tab = "signin" | "signup";
 type SignUpStep = 1 | 2 | 3;
 
-const AuthBackgroundMap = dynamic(() => import("@/components/AuthBackgroundMap"), {
+const AuthBackgroundMap = dynamic(() => import("../../components/AuthBackgroundMap"), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-zinc-900/30" />,
 });
