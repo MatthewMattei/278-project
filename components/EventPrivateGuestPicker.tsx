@@ -1,6 +1,6 @@
 "use client";
 
-import { addPrivateEventGuest } from "@/app/actions/events";
+import { addEventGuest } from "@/app/actions/events";
 import { AvatarImg } from "@/components/AvatarImg";
 import { createClient } from "@/lib/supabase/client";
 import { useCallback, useEffect, useState } from "react";
@@ -75,7 +75,7 @@ export function EventPrivateGuestPicker({
     setBusyId(friendId);
     setMsg(null);
     try {
-      await addPrivateEventGuest(eventId, friendId);
+      await addEventGuest(eventId, friendId);
       await load();
       setMsg("Added to event.");
     } catch (e) {
@@ -86,6 +86,8 @@ export function EventPrivateGuestPicker({
         setMsg("This event is full.");
       } else if (raw.includes("not_friends")) {
         setMsg("You can only invite people on your friends list.");
+      } else if (raw.includes("forbidden")) {
+        setMsg("You don’t have permission to invite people to this event.");
       } else {
         setMsg(raw || "Could not add");
       }

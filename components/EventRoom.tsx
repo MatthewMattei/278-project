@@ -310,7 +310,9 @@ export function EventRoom({
     }
   }
 
-  if (!isMember) {
+  const inEvent = isMember || isPlanner;
+
+  if (!inEvent) {
     return (
       <div className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
         <h2 className="font-semibold">Join this event</h2>
@@ -337,10 +339,9 @@ export function EventRoom({
 
   const reviewOpen = status === "review_open";
   const canInviteGuests =
-    visibility === "private" &&
     eventNotStarted &&
-    isMember &&
-    (isPlanner || membersCanInviteFriends);
+    inEvent &&
+    (isPlanner || (membersCanInviteFriends && isMember));
   const canPlannerDeleteEvent =
     isPlanner && (status === "scheduled" || status === "live");
   const canPlannerEditEventDetails = isPlanner && eventNotStarted;
@@ -397,7 +398,7 @@ export function EventRoom({
         </div>
       </div>
 
-      {visibility === "private" && isMember ? (
+      {(visibility === "private" || visibility === "public") && inEvent ? (
         <EventPrivateGuestPicker
           eventId={eventId}
           myUserId={myUserId}
@@ -675,84 +676,83 @@ export function EventRoom({
               Event chat
             </h2>
             <p className="mt-0.5 text-sm text-zinc-500">
-              Only the event creator can post updates. Everyone in the event can
-              react with emoji.
+              Only the host can post updates or create polls. Everyone here can
+              react and vote in polls below.
             </p>
           </div>
-          <ul className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-            {messages.length === 0 ? (
-              <li className="text-sm text-zinc-500">
-                No messages yet.{isPlanner ? " Post an update below." : ""}
-              </li>
-            ) : (
-              messages.map((msg) => (
-                <li
-                  key={msg.id}
-                  className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 dark:border-zinc-700 dark:bg-zinc-900/50"
-                >
-                  <div className="text-xs uppercase text-zinc-500">
-                    {msg.kind === "planner_broadcast"
-                      ? "Planner"
-                      : msg.kind}
-                  </div>
-                  <p className="mt-1 text-zinc-900 dark:text-zinc-100">
-                    {msg.body}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {EMOJIS.map((em) => (
-                      <button
-                        key={em}
-                        type="button"
-                        className="rounded border border-zinc-200 px-2 py-0.5 text-sm dark:border-zinc-700"
-                        onClick={() => void onReact(msg.id, em)}
-                      >
-                        {em}{" "}
-                        {reactionCount.get(msg.id)?.get(em) ?? 0}
-                      </button>
-                    ))}
-                  </div>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3">
+            <ul className="space-y-3">
+              {messages.length === 0 ? (
+                <li className="text-sm text-zinc-500">
+                  No messages yet.{isPlanner ? " Post an update below." : ""}
                 </li>
-              ))
-            )}
-          </ul>
+              ) : (
+                messages.map((msg) => (
+                  <li
+                    key={msg.id}
+                    className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 dark:border-zinc-700 dark:bg-zinc-900/50"
+                  >
+                    <div className="text-xs uppercase text-zinc-500">
+                      {msg.kind === "planner_broadcast"
+                        ? "Planner"
+                        : msg.kind}
+                    </div>
+                    <p className="mt-1 text-zinc-900 dark:text-zinc-100">
+                      {msg.body}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {EMOJIS.map((em) => (
+                        <button
+                          key={em}
+                          type="button"
+                          className="rounded border border-zinc-200 px-2 py-0.5 text-sm dark:border-zinc-700"
+                          onClick={() => void onReact(msg.id, em)}
+                        >
+                          {em}{" "}
+                          {reactionCount.get(msg.id)?.get(em) ?? 0}
+                        </button>
+                      ))}
+                    </div>
+                  </li>
+                ))
+              )}
+            </ul>
+            {polls.length > 0 ? (
+              <div className="space-y-3 border-t border-zinc-200/80 pt-3 dark:border-zinc-800">
+                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  Polls
+                </p>
+                {polls.map((poll) => (
+                  <PollBlock key={poll.id} poll={poll} onVote={onVote} />
+                ))}
+              </div>
+            ) : null}
+          </div>
           {isPlanner ? (
-            <form
-              onSubmit={(e) => void onBroadcast(e)}
-              className="shrink-0 border-t border-zinc-200 p-3 dark:border-zinc-800"
-            >
-              <textarea
-                value={broadcast}
-                onChange={(e) => setBroadcast(e.target.value)}
-                placeholder="Updates for everyone — logistics, timing, meeting spot…"
-                rows={3}
-                className="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
-              />
-              <button
-                type="submit"
-                disabled={busy}
-                className="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                Send
-              </button>
-            </form>
-          ) : null}
-        </div>
-      )}
-
-      {!reviewOpen ? (
-        <details className="rounded-xl border border-zinc-200 dark:border-zinc-800">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            Polls (optional)
-          </summary>
-          <div className="border-t border-zinc-200 px-4 pb-4 pt-2 dark:border-zinc-800">
-            {polls.map((poll) => (
-              <PollBlock key={poll.id} poll={poll} onVote={onVote} />
-            ))}
-            {isPlanner ? (
+            <div className="shrink-0 space-y-3 border-t border-zinc-200 p-3 dark:border-zinc-800">
+              <form onSubmit={(e) => void onBroadcast(e)}>
+                <textarea
+                  value={broadcast}
+                  onChange={(e) => setBroadcast(e.target.value)}
+                  placeholder="Updates for everyone — logistics, timing, meeting spot…"
+                  rows={3}
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                />
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  Send
+                </button>
+              </form>
               <form
                 onSubmit={(e) => void onCreatePoll(e)}
-                className="mt-4 space-y-2"
+                className="space-y-2 border-t border-zinc-200/80 pt-3 dark:border-zinc-800"
               >
+                <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                  New poll (host only)
+                </p>
                 <input
                   value={pollQ}
                   onChange={(e) => setPollQ(e.target.value)}
@@ -774,10 +774,10 @@ export function EventRoom({
                   Create poll
                 </button>
               </form>
-            ) : null}
-          </div>
-        </details>
-      ) : null}
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {err ? (
         <p className="text-sm text-red-600 dark:text-red-400">{err}</p>
@@ -831,7 +831,7 @@ function PollBlock({
   const countMap = new Map((votes ?? []).map((v) => [v.option_id, v.count]));
 
   return (
-    <div className="mt-4 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+    <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
       <p className="font-medium">{poll.question}</p>
       <ul className="mt-2 space-y-1">
         {[...(poll.poll_options ?? [])]

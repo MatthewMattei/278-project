@@ -8,6 +8,20 @@ import { useEffect, useRef, useState } from "react";
 type Tab = "signin" | "signup";
 type SignUpStep = 1 | 2 | 3;
 
+type EmailConfirmNotice = {
+  email: string;
+  variant: "after_signup" | "signin_blocked";
+};
+
+function isEmailNotConfirmedError(err: { message?: string } | null): boolean {
+  const m = (err?.message ?? "").toLowerCase();
+  return (
+    m.includes("email not confirmed") ||
+    m.includes("email_not_confirmed") ||
+    (m.includes("not confirmed") && m.includes("email"))
+  );
+}
+
 const AuthBackgroundMap = dynamic(() => import("../../components/AuthBackgroundMap"), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-zinc-900/30" />,
@@ -33,6 +47,8 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<"ok" | "err">("ok");
+  const [emailConfirmNotice, setEmailConfirmNotice] =
+    useState<EmailConfirmNotice | null>(null);
   const progressWidth = `${(signUpStep / 3) * 100}%`;
 
   function setMsg(text: string | null, tone: "ok" | "err") {
@@ -51,7 +67,15 @@ export default function LoginPage() {
     });
     setBusy(false);
     if (error) {
-      setMsg(error.message, "err");
+      if (isEmailNotConfirmedError(error)) {
+        setEmailConfirmNotice({
+          email: signInEmail.trim(),
+          variant: "signin_blocked",
+        });
+        setMsg(null, "ok");
+      } else {
+        setMsg(error.message, "err");
+      }
       return;
     }
     router.replace(safeNext);
@@ -87,18 +111,14 @@ export default function LoginPage() {
       setMsg(error.message, "err");
       return;
     }
-    // If email confirmation is disabled this session exists immediately.
-    // Fallback sign-in keeps behavior stable if project settings change.
+    // Email confirmation enabled: no session until the user verifies their inbox.
     if (!data.session) {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: signUpEmail,
-        password: signUpPassword,
+      setEmailConfirmNotice({
+        email: signUpEmail.trim(),
+        variant: "after_signup",
       });
-      if (signInError) {
-        setBusy(false);
-        setMsg(signInError.message, "err");
-        return;
-      }
+      setMsg(null, "ok");
+      return;
     }
     router.replace("/map");
     router.refresh();
@@ -162,10 +182,16 @@ export default function LoginPage() {
             PinTogether
           </p>
           <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            {tab === "signin" ? "Welcome back" : "Create your account"}
+            {emailConfirmNotice
+              ? "One more step"
+              : tab === "signin"
+                ? "Welcome back"
+                : "Create your account"}
           </h1>
           <p className="text-sm text-zinc-600 dark:text-zinc-300">
-            Explore places, plan events, and share trusted reviews with friends.
+            {emailConfirmNotice
+              ? "Verify your email to finish setting up your account."
+              : "Explore places, plan events, and share trusted reviews with friends."}
           </p>
         </div>
 
@@ -176,12 +202,14 @@ export default function LoginPage() {
         ) : null}
 
         <div className="mt-5 flex min-h-[500px] flex-col sm:mt-6 sm:min-h-[540px]">
+          {emailConfirmNotice ? null : (
           <div className="flex rounded-xl border border-zinc-200/90 bg-white/50 p-0.5 dark:border-zinc-700 dark:bg-zinc-900/40">
             <button
               type="button"
               onClick={() => {
                 setTab("signin");
                 setMsg(null, "ok");
+                setEmailConfirmNotice(null);
               }}
                 className={`flex-1 rounded-md px-3 py-2.5 text-sm font-medium transition-colors ${
                 tab === "signin"
@@ -197,6 +225,7 @@ export default function LoginPage() {
                 setTab("signup");
                 setSignUpStep(1);
                 setMsg(null, "ok");
+                setEmailConfirmNotice(null);
               }}
                 className={`flex-1 rounded-md px-3 py-2.5 text-sm font-medium transition-colors ${
                 tab === "signup"
@@ -207,9 +236,57 @@ export default function LoginPage() {
               Create account
             </button>
           </div>
+          )}
 
           <div className="mt-5 flex-1 sm:mt-6">
-            {tab === "signin" ? (
+            {emailConfirmNotice ? (
+              <div className="flex h-full min-h-[420px] flex-col justify-center rounded-2xl border border-emerald-200/90 bg-emerald-50/95 p-6 shadow-sm dark:border-emerald-800/50 dark:bg-emerald-950/40 sm:min-h-[460px]">
+                <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                  Confirm your email
+                </h2>
+                <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
+                  {emailConfirmNotice.variant === "after_signup"
+                    ? "We sent a verification link. Your account is ready once you confirm."
+                    : "You’ll need to verify your email before you can sign in."}
+                </p>
+                <ol className="mt-5 list-decimal space-y-3 pl-5 text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
+                  <li>
+                    Open the inbox for{" "}
+                    <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                      {emailConfirmNotice.email}
+                    </span>
+                    .
+                  </li>
+                  <li>
+                    Open the confirmation email and tap{" "}
+                    <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                      Confirm your email
+                    </span>{" "}
+                    (or the link inside the message).
+                  </li>
+                  <li>
+                    Return here and sign in with the same email and password you
+                    chose.
+                  </li>
+                </ol>
+                <p className="mt-5 text-xs text-zinc-500 dark:text-zinc-400">
+                  No message after a few minutes? Check your spam or promotions
+                  folder.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSignInEmail(emailConfirmNotice.email);
+                    setEmailConfirmNotice(null);
+                    setTab("signin");
+                    setMsg(null, "ok");
+                  }}
+                  className="mt-6 w-full rounded-lg bg-emerald-600 px-4 py-3 text-sm font-medium text-white hover:bg-emerald-700"
+                >
+                  Continue to sign in
+                </button>
+              </div>
+            ) : tab === "signin" ? (
               <form onSubmit={(e) => void signIn(e)} className="space-y-4" noValidate>
                 <div>
                   <label

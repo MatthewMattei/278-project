@@ -86,11 +86,11 @@ export async function deleteEvent(eventId: string) {
   revalidatePath("/map");
 }
 
-export async function addPrivateEventGuest(eventId: string, guestUserId: string) {
+export async function addEventGuest(eventId: string, guestUserId: string) {
   const supabase = await createClient();
   await requireUserWithProfile(supabase);
 
-  const { data, error } = await supabase.rpc("add_private_event_guest", {
+  const { data, error } = await supabase.rpc("add_event_guest", {
     p_event_id: eventId,
     p_guest_user_id: guestUserId,
   });

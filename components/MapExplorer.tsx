@@ -200,7 +200,11 @@ export default function MapExplorer() {
         ) : null}
 
         {selectedPinId ? (
-          <PinDetailPanel pinId={selectedPinId} onClose={closePinPanel} />
+          <PinDetailPanel
+            pinId={selectedPinId}
+            onClose={closePinPanel}
+            onPinsChanged={() => void loadPins()}
+          />
         ) : null}
       </div>
 

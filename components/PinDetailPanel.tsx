@@ -70,9 +70,12 @@ type HomeSection = "events" | "reviews";
 export function PinDetailPanel({
   pinId,
   onClose,
+  onPinsChanged,
 }: {
   pinId: string;
   onClose: () => void;
+  /** Called after pin list on the map should refresh (e.g. after delete). */
+  onPinsChanged?: () => void;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -631,6 +634,7 @@ export function PinDetailPanel({
                           void (async () => {
                             try {
                               await deletePin(pin.id);
+                              onPinsChanged?.();
                               onClose();
                             } catch {
                               /* */
