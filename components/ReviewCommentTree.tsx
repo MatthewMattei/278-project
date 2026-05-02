@@ -21,6 +21,80 @@ export type ThreadComment = {
 
 type AuthorInfo = { display_name: string; avatar_url: string | null };
 
+function ThreadAnchorRibbon({
+  anchorUserId,
+  authors,
+  anchorNames,
+  variant = "comment",
+  onClear,
+}: {
+  anchorUserId: string;
+  authors: Map<string, AuthorInfo>;
+  anchorNames: Map<string, string>;
+  variant?: "comment" | "composer";
+  onClear?: () => void;
+}) {
+  const info = authors.get(anchorUserId);
+  const name =
+    anchorNames.get(anchorUserId) ?? info?.display_name ?? "Member";
+
+  if (variant === "composer") {
+    return (
+      <div className="flex overflow-hidden rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50 via-white to-teal-50/40 shadow-[0_1px_0_rgba(16,185,129,0.06)] dark:border-emerald-900/55 dark:from-emerald-950/45 dark:via-zinc-900/40 dark:to-emerald-950/25">
+        <div
+          className="w-1 shrink-0 bg-gradient-to-b from-emerald-400 to-teal-600 dark:from-emerald-500 dark:to-teal-500"
+          aria-hidden
+        />
+        <div className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5">
+          <AvatarImg src={info?.avatar_url} alt={name} size={40} />
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400/95">
+              Replying in thread
+            </p>
+            <p className="mt-0.5 truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+              <span className="font-normal text-zinc-600 dark:text-zinc-400">
+                On{" "}
+              </span>
+              {name}
+              <span className="font-normal text-zinc-600 dark:text-zinc-400">
+                &apos;s review
+              </span>
+            </p>
+          </div>
+          {onClear ? (
+            <button
+              type="button"
+              className="shrink-0 rounded-lg border border-emerald-200/80 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-emerald-900/90 shadow-sm hover:bg-emerald-50/90 dark:border-emerald-800 dark:bg-zinc-800/90 dark:text-emerald-200 dark:hover:bg-zinc-700/80"
+              onClick={onClear}
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-3 flex overflow-hidden rounded-xl border border-emerald-100/90 bg-gradient-to-r from-emerald-50/95 via-white/90 to-transparent dark:border-emerald-900/40 dark:from-emerald-950/35 dark:via-zinc-900/25 dark:to-transparent">
+      <div
+        className="w-0.5 shrink-0 rounded-full bg-gradient-to-b from-emerald-400 to-teal-500 opacity-90 dark:from-emerald-500 dark:to-teal-400"
+        aria-hidden
+      />
+      <div className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2">
+        <AvatarImg src={info?.avatar_url} alt={name} size={28} />
+        <p className="min-w-0 text-[13px] leading-snug">
+          <span className="text-zinc-500 dark:text-zinc-500">About </span>
+          <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+            {name}
+          </span>
+          <span className="text-zinc-600 dark:text-zinc-400">’s take</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function buildChildrenMap(rows: ThreadComment[]) {
   const m = new Map<string | null, ThreadComment[]>();
   for (const c of rows) {
@@ -64,9 +138,6 @@ function Branch({
 
   const kids = childrenMap.get(comment.id) ?? [];
   const a = authors.get(comment.author_id);
-  const anchorLabel =
-    comment.thread_anchor_user_id &&
-    anchorNames.get(comment.thread_anchor_user_id);
 
   async function submitReply(e: React.FormEvent) {
     e.preventDefault();
@@ -121,10 +192,13 @@ function Branch({
   return (
     <li className={depth > 0 ? "mt-3 border-l-2 border-emerald-200/80 pl-3 dark:border-emerald-900/60" : ""}>
       <div className="rounded-2xl border border-zinc-200/80 bg-white/60 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/40">
-        {anchorLabel ? (
-          <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
-            Thread: {anchorLabel}
-          </p>
+        {comment.thread_anchor_user_id ? (
+          <ThreadAnchorRibbon
+            anchorUserId={comment.thread_anchor_user_id}
+            authors={authors}
+            anchorNames={anchorNames}
+            variant="comment"
+          />
         ) : null}
         <div className="flex gap-2">
           <AvatarImg
@@ -330,23 +404,13 @@ export function ReviewCommentTree({
       <form onSubmit={(e) => void submitTop(e)} className="mt-4 space-y-2">
         <NormReminder context="review" />
         {threadAnchorUserId ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-3 py-2 text-xs dark:border-emerald-900 dark:bg-emerald-950/40">
-            <span className="text-emerald-900 dark:text-emerald-200">
-              Comment on{" "}
-              <strong>
-                {authors.get(threadAnchorUserId)?.display_name ??
-                  "this perspective"}
-              </strong>
-              &apos;s take
-            </span>
-            <button
-              type="button"
-              className="text-emerald-800 underline dark:text-emerald-300"
-              onClick={() => onThreadAnchorChange(null)}
-            >
-              Clear
-            </button>
-          </div>
+          <ThreadAnchorRibbon
+            anchorUserId={threadAnchorUserId}
+            authors={authors}
+            anchorNames={anchorNames}
+            variant="composer"
+            onClear={() => onThreadAnchorChange(null)}
+          />
         ) : (
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
             Optional: select someone under &quot;Everyone&apos;s take&quot;

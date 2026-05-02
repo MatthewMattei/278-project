@@ -946,7 +946,7 @@ export function EventRoom({
           </div>
         </div>
       ) : (
-        <div className="relative flex max-h-[min(72vh,640px)] min-h-[280px] flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex max-h-[min(72vh,640px)] min-h-[280px] flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
           <div className="shrink-0 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
               Event chat
@@ -956,17 +956,13 @@ export function EventRoom({
               can post; everyone can react and vote.
             </p>
           </div>
-          <div
-            className={`min-h-0 flex-1 overflow-y-auto px-4 py-3 ${
-              isPlanner ? "pb-28" : "pb-4"
-            }`}
-          >
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
             <ul className="space-y-4">
               {chatTimeline.length === 0 ? (
                 <li className="text-sm text-zinc-500">
                   Nothing here yet.
                   {isPlanner
-                    ? " Use the bar at the bottom to send an update or start a poll."
+                    ? " Use the form below to send an update or start a poll."
                     : ""}
                 </li>
               ) : (
@@ -1084,80 +1080,81 @@ export function EventRoom({
             </ul>
           </div>
           {isPlanner ? (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
-              <div className="pointer-events-auto mx-auto max-w-3xl border-t border-zinc-200/90 bg-white/95 px-3 pb-3 pt-2 shadow-[0_-12px_32px_rgba(0,0,0,0.1)] backdrop-blur-md dark:border-zinc-700 dark:bg-zinc-950/95 dark:shadow-[0_-12px_32px_rgba(0,0,0,0.45)]">
-                <div className="mb-2 flex gap-1 rounded-lg bg-zinc-100 p-0.5 dark:bg-zinc-900">
-                  <button
-                    type="button"
-                    className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium ${
-                      composerTab === "message"
-                        ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50"
-                        : "text-zinc-600 dark:text-zinc-400"
-                    }`}
-                    onClick={() => setComposerTab("message")}
-                  >
-                    Message
-                  </button>
-                  <button
-                    type="button"
-                    className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium ${
-                      composerTab === "poll"
-                        ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50"
-                        : "text-zinc-600 dark:text-zinc-400"
-                    }`}
-                    onClick={() => setComposerTab("poll")}
-                  >
-                    Poll
-                  </button>
-                </div>
-                {composerTab === "message" ? (
-                  <form
-                    onSubmit={(e) => void onBroadcast(e)}
-                    className="space-y-2"
-                  >
-                    <textarea
-                      value={broadcast}
-                      onChange={(e) => setBroadcast(e.target.value)}
-                      placeholder="Update everyone — logistics, timing, meeting spot…"
-                      rows={2}
-                      className="w-full resize-none rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
-                    />
-                    <button
-                      type="submit"
-                      disabled={busy}
-                      className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                    >
-                      Send
-                    </button>
-                  </form>
-                ) : (
-                  <form
-                    onSubmit={(e) => void onCreatePoll(e)}
-                    className="space-y-2"
-                  >
-                    <input
-                      value={pollQ}
-                      onChange={(e) => setPollQ(e.target.value)}
-                      placeholder="Poll question"
-                      className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
-                    />
-                    <textarea
-                      value={pollOpts}
-                      onChange={(e) => setPollOpts(e.target.value)}
-                      placeholder="One option per line"
-                      rows={2}
-                      className="w-full resize-none rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
-                    />
-                    <button
-                      type="submit"
-                      disabled={busy}
-                      className="w-full rounded-lg bg-zinc-800 py-2 text-sm text-white dark:bg-zinc-200 dark:text-zinc-900"
-                    >
-                      Create poll
-                    </button>
-                  </form>
-                )}
+            <div className="shrink-0 border-t border-zinc-200 bg-zinc-50/90 px-3 py-3 dark:border-zinc-700 dark:bg-zinc-900/80">
+              <p className="mb-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                Post as host
+              </p>
+              <div className="mb-2 flex gap-1 rounded-lg bg-zinc-200/80 p-0.5 dark:bg-zinc-800">
+                <button
+                  type="button"
+                  className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium ${
+                    composerTab === "message"
+                      ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-50"
+                      : "text-zinc-600 dark:text-zinc-400"
+                  }`}
+                  onClick={() => setComposerTab("message")}
+                >
+                  Message
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium ${
+                    composerTab === "poll"
+                      ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-50"
+                      : "text-zinc-600 dark:text-zinc-400"
+                  }`}
+                  onClick={() => setComposerTab("poll")}
+                >
+                  Poll
+                </button>
               </div>
+              {composerTab === "message" ? (
+                <form
+                  onSubmit={(e) => void onBroadcast(e)}
+                  className="space-y-2"
+                >
+                  <textarea
+                    value={broadcast}
+                    onChange={(e) => setBroadcast(e.target.value)}
+                    placeholder="Update everyone — logistics, timing, meeting spot…"
+                    rows={2}
+                    className="w-full resize-none rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
+                  />
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    Send
+                  </button>
+                </form>
+              ) : (
+                <form
+                  onSubmit={(e) => void onCreatePoll(e)}
+                  className="space-y-2"
+                >
+                  <input
+                    value={pollQ}
+                    onChange={(e) => setPollQ(e.target.value)}
+                    placeholder="Poll question"
+                    className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
+                  />
+                  <textarea
+                    value={pollOpts}
+                    onChange={(e) => setPollOpts(e.target.value)}
+                    placeholder="One option per line"
+                    rows={2}
+                    className="w-full resize-none rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
+                  />
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="w-full rounded-lg bg-zinc-800 py-2 text-sm text-white dark:bg-zinc-200 dark:text-zinc-900"
+                  >
+                    Create poll
+                  </button>
+                </form>
+              )}
             </div>
           ) : null}
         </div>
