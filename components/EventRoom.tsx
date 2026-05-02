@@ -72,6 +72,9 @@ type Contribution = { user_id: string; body: string; rating: number };
 
 const EMOJIS = ["👍", "🎉", "❓"];
 
+const glassPanel =
+  "rounded-2xl border border-white/35 bg-white/90 shadow-[0_8px_32px_rgba(15,23,42,0.08)] backdrop-blur-md dark:border-zinc-600 dark:bg-zinc-900/82";
+
 export function EventRoom({
   eventId,
   pinId,
@@ -135,6 +138,9 @@ export function EventRoom({
   const [contributions, setContributions] = useState(initialContributions);
   /** Avoid resetting chat state when parent passes new array refs with stale SSR payload. */
   const syncedEventIdRef = useRef<string | null>(null);
+  /** Narrow Realtime: only refetch when reactions/votes belong to this room's messages or polls. */
+  const roomMessageIdsRef = useRef<Set<string>>(new Set());
+  const roomPollIdsRef = useRef<Set<string>>(new Set());
   const [liveStatus, setLiveStatus] = useState(status);
   const myContribution = contributions.find((c) => c.user_id === myUserId);
   const [broadcast, setBroadcast] = useState("");
@@ -174,6 +180,14 @@ export function EventRoom({
     setEditStarts(eventStartsAt.slice(0, 16));
     setEditMemInvite(membersCanInviteFriends);
   }, [eventBlurb, eventCapacity, eventStartsAt, membersCanInviteFriends]);
+
+  useEffect(() => {
+    roomMessageIdsRef.current = new Set(messages.map((m) => m.id));
+  }, [messages]);
+
+  useEffect(() => {
+    roomPollIdsRef.current = new Set(polls.map((p) => p.id));
+  }, [polls]);
 
   const reload = useCallback(async () => {
     const supabase = createClient();
@@ -272,7 +286,14 @@ export function EventRoom({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "message_reactions" },
-        () => void reload(),
+        (payload) => {
+          const n = payload.new as { message_id?: string } | null;
+          const o = payload.old as { message_id?: string } | null;
+          const mid = n?.message_id ?? o?.message_id;
+          if (typeof mid === "string" && roomMessageIdsRef.current.has(mid)) {
+            void reload();
+          }
+        },
       )
       .on(
         "postgres_changes",
@@ -287,7 +308,14 @@ export function EventRoom({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "poll_votes" },
-        () => void reload(),
+        (payload) => {
+          const n = payload.new as { poll_id?: string } | null;
+          const o = payload.old as { poll_id?: string } | null;
+          const pid = n?.poll_id ?? o?.poll_id;
+          if (typeof pid === "string" && roomPollIdsRef.current.has(pid)) {
+            void reload();
+          }
+        },
       )
       .on(
         "postgres_changes",
@@ -370,7 +398,6 @@ export function EventRoom({
           prev.some((m) => m.id === row.id) ? prev : [...prev, row as Message],
         );
       }
-      await reload();
     } catch (er) {
       setErr(er instanceof Error ? er.message : "Failed");
     } finally {
@@ -454,18 +481,20 @@ export function EventRoom({
 
   if (!inEvent) {
     return (
-      <div className="rounded-xl border border-zinc-200 p-6 dark:border-zinc-800">
-        <h2 className="font-semibold">Join this event</h2>
+      <div className={`${glassPanel} p-6 sm:p-8`}>
+        <h2 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          Join this event
+        </h2>
         {visibility === "public" ? (
           <button
             type="button"
             onClick={() => void onJoin()}
-            className="mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-sm text-white"
+            className="mt-4 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700"
           >
             Join public event
           </button>
         ) : (
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
             This event is private. Ask the host or someone already going to add
             you from their friends list.
           </p>
@@ -523,7 +552,7 @@ export function EventRoom({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-3 rounded-2xl border border-zinc-200/80 bg-white/60 p-3 dark:border-zinc-700 dark:bg-zinc-900/40">
+      <div className={`flex items-start gap-3 p-3 ${glassPanel}`}>
         <AvatarImg
           src={plannerProfile?.avatar_url}
           alt={plannerProfile?.display_name ?? "Host"}
@@ -548,11 +577,11 @@ export function EventRoom({
       ) : null}
 
       {inEvent && !isPlanner ? (
-        <div className="rounded-2xl border border-zinc-200/80 p-4 dark:border-zinc-700">
+        <div className={`p-4 ${glassPanel}`}>
           <button
             type="button"
             disabled={busy}
-            className="rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-800 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200"
+            className="rounded-xl border border-zinc-200/80 bg-white/60 px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-200"
             onClick={() => {
               if (
                 !confirm(
@@ -584,8 +613,8 @@ export function EventRoom({
       ) : null}
 
       {isPlanner ? (
-        <div className="rounded-2xl border border-zinc-200/80 p-4 dark:border-zinc-700">
-          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+        <div className={`p-4 ${glassPanel}`}>
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Who&apos;s planning to attend ({memberRoster.length})
           </p>
           <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto text-sm">
@@ -604,7 +633,7 @@ export function EventRoom({
                   <button
                     type="button"
                     disabled={busy}
-                    className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-700 disabled:opacity-50 dark:border-red-900 dark:text-red-400"
+                    className="rounded-xl border border-red-200/90 bg-white/50 px-2.5 py-1 text-xs font-medium text-red-700 disabled:opacity-50 dark:border-red-900/80 dark:bg-zinc-900/40 dark:text-red-400"
                     onClick={() => {
                       if (
                         !confirm(
@@ -642,20 +671,20 @@ export function EventRoom({
       ) : null}
 
       {canPlannerEditEventDetails ? (
-        <div className="rounded-2xl border border-zinc-200/80 p-4 dark:border-zinc-700">
+        <div className={`p-4 ${glassPanel}`}>
           {!editingEvent ? (
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => setEditingEvent(true)}
-                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
+                className="rounded-xl border border-zinc-200/80 bg-white/80 px-3 py-2 text-sm font-medium shadow-sm dark:border-zinc-600 dark:bg-zinc-800/80"
               >
                 Edit event details
               </button>
               <button
                 type="button"
                 onClick={() => void removeEvent()}
-                className="rounded-xl border border-red-200 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:text-red-400"
+                className="rounded-xl border border-red-200/90 bg-white/50 px-3 py-2 text-sm font-medium text-red-700 dark:border-red-900/80 dark:bg-zinc-900/40 dark:text-red-400"
               >
                 Delete event
               </button>
@@ -668,7 +697,7 @@ export function EventRoom({
                   type="datetime-local"
                   value={editStarts}
                   onChange={(e) => setEditStarts(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-zinc-200 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                  className="mt-1 w-full rounded-xl border border-zinc-200/80 bg-white/80 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800/80"
                 />
               </div>
               <div>
@@ -678,7 +707,7 @@ export function EventRoom({
                   min={1}
                   value={editCap}
                   onChange={(e) => setEditCap(Number(e.target.value))}
-                  className="mt-1 w-full rounded-xl border border-zinc-200 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                  className="mt-1 w-full rounded-xl border border-zinc-200/80 bg-white/80 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800/80"
                 />
               </div>
               <div>
@@ -687,7 +716,7 @@ export function EventRoom({
                   value={editBlurb}
                   onChange={(e) => setEditBlurb(e.target.value)}
                   rows={3}
-                  className="mt-1 w-full rounded-xl border border-zinc-200 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                  className="mt-1 w-full rounded-xl border border-zinc-200/80 bg-white/80 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800/80"
                 />
               </div>
               {visibility === "private" ? (
@@ -704,7 +733,7 @@ export function EventRoom({
                 <button
                   type="submit"
                   disabled={busy}
-                  className="rounded-xl bg-emerald-600 px-3 py-2 text-sm text-white"
+                  className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                 >
                   Save
                 </button>
@@ -720,11 +749,11 @@ export function EventRoom({
           )}
         </div>
       ) : canPlannerDeleteEvent ? (
-        <div className="rounded-2xl border border-zinc-200/80 p-4 dark:border-zinc-700">
+        <div className={`p-4 ${glassPanel}`}>
           <button
             type="button"
             onClick={() => void removeEvent()}
-            className="rounded-xl border border-red-200 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:text-red-400"
+            className="rounded-xl border border-red-200/90 bg-white/50 px-3 py-2 text-sm font-medium text-red-700 dark:border-red-900/80 dark:bg-zinc-900/40 dark:text-red-400"
           >
             Delete event
           </button>
@@ -732,10 +761,10 @@ export function EventRoom({
       ) : null}
 
       {isPlanner ? (
-        <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+        <div className={`flex flex-wrap gap-2 p-4 ${glassPanel}`}>
           <button
             type="button"
-            className="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm text-white dark:bg-zinc-200 dark:text-zinc-900"
+            className="rounded-xl border border-zinc-200/80 bg-white/80 px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm dark:border-zinc-600 dark:bg-zinc-800/80 dark:text-zinc-100"
             onClick={() =>
               void (async () => {
                 await setEventLive(eventId);
@@ -747,7 +776,7 @@ export function EventRoom({
           </button>
           <button
             type="button"
-            className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm text-white"
+            className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
             disabled={reviewOpen}
             title={
               reviewOpen
@@ -765,7 +794,7 @@ export function EventRoom({
           </button>
           <button
             type="button"
-            className="rounded-lg border border-amber-600 px-3 py-1.5 text-sm text-amber-800 dark:text-amber-300"
+            className="rounded-xl border border-amber-500/80 bg-amber-50/80 px-3 py-2 text-sm font-medium text-amber-900 shadow-sm dark:border-amber-700/80 dark:bg-amber-950/40 dark:text-amber-200"
             onClick={() =>
               void (async () => {
                 await closeReviewManually(eventId);

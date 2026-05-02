@@ -24,14 +24,22 @@ export async function GET(request: Request) {
   }
 
   let processed = 0;
+  const failures: { id: string; message: string }[] = [];
   for (const row of due ?? []) {
     try {
       await amalgamateEventReview(row.id);
       processed += 1;
-    } catch {
-      /* continue other events */
+    } catch (e) {
+      failures.push({
+        id: row.id,
+        message: e instanceof Error ? e.message : String(e),
+      });
     }
   }
 
-  return Response.json({ processed, checked: due?.length ?? 0 });
+  return Response.json({
+    processed,
+    checked: due?.length ?? 0,
+    failures,
+  });
 }

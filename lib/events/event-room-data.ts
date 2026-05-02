@@ -98,66 +98,51 @@ export async function loadEventRoomPayload(
     members_can_invite_friends: Boolean(raw.members_can_invite_friends),
   } as EventRoomEventRow;
 
-  const { data: plannerRow } = await supabase
-    .from("profiles")
-    .select("display_name, avatar_url")
-    .eq("id", ev.planner_id)
-    .maybeSingle();
+  const [
+    { data: plannerRow },
+    { data: membership },
+    { data: messages },
+    { data: polls },
+    { data: contributions },
+    { data: memRows },
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("display_name, avatar_url")
+      .eq("id", ev.planner_id)
+      .maybeSingle(),
+    supabase
+      .from("event_members")
+      .select("role")
+      .eq("event_id", eventId)
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("event_messages")
+      .select("id, body, kind, author_id, created_at")
+      .eq("event_id", eventId)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("polls")
+      .select("id, question, created_at, poll_options(id, label_text, sort_order)")
+      .eq("event_id", eventId),
+    supabase
+      .from("review_contributions")
+      .select("user_id, body, rating")
+      .eq("event_id", eventId),
+    supabase.from("event_members").select("user_id").eq("event_id", eventId),
+  ]);
 
   const plannerProfile = plannerRow
     ? (plannerRow as PlannerProfile)
     : null;
 
-  const { data: membership } = await supabase
-    .from("event_members")
-    .select("role")
-    .eq("event_id", eventId)
-    .eq("user_id", userId)
-    .maybeSingle();
-
   const isMember = !!membership;
   const isPlanner = ev.planner_id === userId;
 
-  const { data: messages } = await supabase
-    .from("event_messages")
-    .select("id, body, kind, author_id, created_at")
-    .eq("event_id", eventId)
-    .order("created_at", { ascending: true });
-
   const msgIds = (messages ?? []).map((m) => m.id);
-
-  const { data: reactions } =
-    msgIds.length > 0
-      ? await supabase
-          .from("message_reactions")
-          .select("message_id, user_id, emoji")
-          .in("message_id", msgIds)
-      : { data: [] as EventRoomReaction[] };
-
-  const { data: polls } = await supabase
-    .from("polls")
-    .select("id, question, created_at, poll_options(id, label_text, sort_order)")
-    .eq("event_id", eventId);
-
   const pollList = (polls ?? []) as EventRoomPoll[];
   const pollIds = pollList.map((p) => p.id);
-  const { data: pollVotes } =
-    pollIds.length > 0
-      ? await supabase
-          .from("poll_votes")
-          .select("poll_id, option_id, user_id")
-          .in("poll_id", pollIds)
-      : { data: [] as EventRoomPollVote[] };
-
-  const { data: contributions } = await supabase
-    .from("review_contributions")
-    .select("user_id, body, rating")
-    .eq("event_id", eventId);
-
-  const { data: memRows } = await supabase
-    .from("event_members")
-    .select("user_id")
-    .eq("event_id", eventId);
 
   const rosterIds = [
     ...new Set([
@@ -166,18 +151,35 @@ export async function loadEventRoomPayload(
     ]),
   ];
 
-  const { data: rosterProfiles } =
+  const [reactionsResult, pollVotesResult, rosterResult] = await Promise.all([
+    msgIds.length > 0
+      ? supabase
+          .from("message_reactions")
+          .select("message_id, user_id, emoji")
+          .in("message_id", msgIds)
+      : Promise.resolve({ data: [] as EventRoomReaction[] }),
+    pollIds.length > 0
+      ? supabase
+          .from("poll_votes")
+          .select("poll_id, option_id, user_id")
+          .in("poll_id", pollIds)
+      : Promise.resolve({ data: [] as EventRoomPollVote[] }),
     rosterIds.length > 0
-      ? await supabase
+      ? supabase
           .from("profiles")
           .select("id, display_name")
           .in("id", rosterIds)
-      : { data: [] as { id: string; display_name: string }[] };
+      : Promise.resolve({
+          data: [] as { id: string; display_name: string }[],
+        }),
+  ]);
 
-  const memberRoster: EventRoomMember[] = (rosterProfiles ?? []).map((p) => ({
-    user_id: p.id,
-    display_name: p.display_name ?? "Member",
-  }));
+  const memberRoster: EventRoomMember[] = (rosterResult.data ?? []).map(
+    (p) => ({
+      user_id: p.id,
+      display_name: p.display_name ?? "Member",
+    }),
+  );
 
   return {
     ok: true,
@@ -187,9 +189,9 @@ export async function loadEventRoomPayload(
       isMember,
       isPlanner,
       messages: (messages ?? []) as EventRoomMessage[],
-      reactions: (reactions ?? []) as EventRoomReaction[],
+      reactions: (reactionsResult.data ?? []) as EventRoomReaction[],
       polls: pollList,
-      pollVotes: (pollVotes ?? []) as EventRoomPollVote[],
+      pollVotes: (pollVotesResult.data ?? []) as EventRoomPollVote[],
       contributions: (contributions ?? []) as EventRoomContribution[],
       memberRoster,
     },

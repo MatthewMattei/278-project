@@ -73,7 +73,23 @@ export async function amalgamateEventReview(eventId: string) {
     title: "Group review",
   });
 
-  if (insErr) throw new Error(insErr.message);
+  if (insErr) {
+    const msg = insErr.message ?? "";
+    const duplicate =
+      insErr.code === "23505" ||
+      msg.includes("duplicate key") ||
+      msg.includes("reviews_one_group_per_event");
+    if (duplicate) {
+      const { error: upErr } = await admin
+        .from("events")
+        .update({ status: "completed" })
+        .eq("id", eventId)
+        .eq("status", "review_open");
+      if (upErr) throw new Error(upErr.message);
+      return { skipped: true as const, reason: "already_published" };
+    }
+    throw new Error(insErr.message);
+  }
 
   const { error: upErr } = await admin
     .from("events")

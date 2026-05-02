@@ -39,7 +39,7 @@ type MemberSummary = {
 
 type ReviewRow = {
   id: string;
-  scope: string;
+  scope: "group";
   body: string;
   rating: number | null;
   stats: ReviewStats | null;
@@ -159,19 +159,30 @@ export function PinDetailPanel({
     setPin(pr);
     setPinTitleEdit(pr.title);
 
-    const { data: reviewsData } = await supabase
-      .from("reviews")
-      .select(
-        "id, scope, body, rating, stats, member_summaries, created_at, author_id, title, source_event_id",
-      )
-      .eq("pin_id", pinId)
-      .eq("scope", "group")
-      .order("created_at", { ascending: false });
+    const [{ data: reviewsData }, { data: eventsData }] = await Promise.all([
+      supabase
+        .from("reviews")
+        .select(
+          "id, scope, body, rating, stats, member_summaries, created_at, author_id, title, source_event_id",
+        )
+        .eq("pin_id", pinId)
+        .eq("scope", "group")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("events")
+        .select(
+          "id, starts_at, capacity, visibility, status, blurb, planner_id, members_can_invite_friends",
+        )
+        .eq("pin_id", pinId)
+        .in("status", ["scheduled", "live", "review_open"])
+        .order("starts_at", { ascending: true }),
+    ]);
 
     const revs = (reviewsData ?? []).map((row) => {
       const r = row as Record<string, unknown>;
       return {
         ...r,
+        scope: "group" as const,
         stats: (r.stats as ReviewStats | null) ?? null,
         member_summaries: Array.isArray(r.member_summaries)
           ? (r.member_summaries as MemberSummary[])
@@ -179,6 +190,15 @@ export function PinDetailPanel({
       } as ReviewRow;
     });
     setGroupReviews(revs);
+
+    setEvents(
+      (eventsData ?? []).map((e) => ({
+        ...e,
+        members_can_invite_friends: Boolean(
+          (e as EventRow).members_can_invite_friends,
+        ),
+      })) as EventRow[],
+    );
 
     const reviewIds = revs.map((r) => r.id);
     const { data: commentsData } = reviewIds.length
@@ -248,24 +268,6 @@ export function PinDetailPanel({
       ),
     );
 
-    const { data: eventsData } = await supabase
-      .from("events")
-      .select(
-        "id, starts_at, capacity, visibility, status, blurb, planner_id, members_can_invite_friends",
-      )
-      .eq("pin_id", pinId)
-      .in("status", ["scheduled", "live", "review_open"])
-      .order("starts_at", { ascending: true });
-
-    setEvents(
-      (eventsData ?? []).map((e) => ({
-        ...e,
-        members_can_invite_friends: Boolean(
-          (e as EventRow).members_can_invite_friends,
-        ),
-      })) as EventRow[],
-    );
-
     setLoading(false);
   }, [pinId]);
 
@@ -284,7 +286,9 @@ export function PinDetailPanel({
     );
     setEventPayload(result);
     setEventLoading(false);
-    void load();
+    if (!result.ok || result.data.event.status === "completed") {
+      void load();
+    }
   }, [eventIdParam, myUserId, load]);
 
   const refreshCard = useCallback(async () => {
