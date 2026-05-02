@@ -185,18 +185,6 @@ export async function openReviewWindow(eventId: string) {
 
   if (error) throw new Error(error.message);
 
-  const { error: sysErr } = await supabase.from("event_messages").insert({
-    event_id: eventId,
-    author_id: user.id,
-    body: "The review window is open. Share your honest take — be kind to local staff in your wording.",
-    kind: "system",
-  });
-
-  if (sysErr) {
-    // RLS may block system messages from client — ignore if fails
-    console.warn("system message insert:", sysErr.message);
-  }
-
   revalidatePath(`/events/${eventId}`);
 }
 
@@ -279,19 +267,35 @@ export async function postPlannerBroadcast(eventId: string, body: string) {
   revalidatePath(`/events/${eventId}`);
 }
 
-export async function addReaction(messageId: string, emoji: string) {
+export async function toggleReaction(messageId: string, emoji: string) {
   const supabase = await createClient();
   const user = await requireUserWithProfile(supabase);
+
+  const { data: existing } = await supabase
+    .from("message_reactions")
+    .select("message_id")
+    .eq("message_id", messageId)
+    .eq("user_id", user.id)
+    .eq("emoji", emoji)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("message_reactions")
+      .delete()
+      .eq("message_id", messageId)
+      .eq("user_id", user.id)
+      .eq("emoji", emoji);
+    if (error) throw new Error(error.message);
+    return;
+  }
 
   const { error } = await supabase.from("message_reactions").insert({
     message_id: messageId,
     user_id: user.id,
     emoji,
   });
-
-  if (error && !error.message.includes("duplicate")) {
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 }
 
 export async function createPoll(input: {

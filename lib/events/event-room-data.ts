@@ -32,6 +32,17 @@ export type EventRoomContribution = {
   rating: number;
 };
 
+export type EventRoomPollVote = {
+  poll_id: string;
+  option_id: string;
+  user_id: string;
+};
+
+export type EventRoomMember = {
+  user_id: string;
+  display_name: string;
+};
+
 export type EventRoomEventRow = {
   id: string;
   pin_id: string;
@@ -58,7 +69,9 @@ export type EventRoomPayload = {
   messages: EventRoomMessage[];
   reactions: EventRoomReaction[];
   polls: EventRoomPoll[];
+  pollVotes: EventRoomPollVote[];
   contributions: EventRoomContribution[];
+  memberRoster: EventRoomMember[];
 };
 
 export async function loadEventRoomPayload(
@@ -125,10 +138,45 @@ export async function loadEventRoomPayload(
     .select("id, question, poll_options(id, label_text, sort_order)")
     .eq("event_id", eventId);
 
+  const pollList = (polls ?? []) as EventRoomPoll[];
+  const pollIds = pollList.map((p) => p.id);
+  const { data: pollVotes } =
+    pollIds.length > 0
+      ? await supabase
+          .from("poll_votes")
+          .select("poll_id, option_id, user_id")
+          .in("poll_id", pollIds)
+      : { data: [] as EventRoomPollVote[] };
+
   const { data: contributions } = await supabase
     .from("review_contributions")
     .select("user_id, body, rating")
     .eq("event_id", eventId);
+
+  const { data: memRows } = await supabase
+    .from("event_members")
+    .select("user_id")
+    .eq("event_id", eventId);
+
+  const rosterIds = [
+    ...new Set([
+      ...(memRows ?? []).map((m) => m.user_id as string),
+      ev.planner_id,
+    ]),
+  ];
+
+  const { data: rosterProfiles } =
+    rosterIds.length > 0
+      ? await supabase
+          .from("profiles")
+          .select("id, display_name")
+          .in("id", rosterIds)
+      : { data: [] as { id: string; display_name: string }[] };
+
+  const memberRoster: EventRoomMember[] = (rosterProfiles ?? []).map((p) => ({
+    user_id: p.id,
+    display_name: p.display_name ?? "Member",
+  }));
 
   return {
     ok: true,
@@ -139,8 +187,10 @@ export async function loadEventRoomPayload(
       isPlanner,
       messages: (messages ?? []) as EventRoomMessage[],
       reactions: (reactions ?? []) as EventRoomReaction[],
-      polls: (polls ?? []) as EventRoomPoll[],
+      polls: pollList,
+      pollVotes: (pollVotes ?? []) as EventRoomPollVote[],
       contributions: (contributions ?? []) as EventRoomContribution[],
+      memberRoster,
     },
   };
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  addReaction,
   closeReviewManually,
   createPoll,
   deleteEvent,
@@ -10,6 +9,7 @@ import {
   postPlannerBroadcast,
   setEventLive,
   submitContribution,
+  toggleReaction,
   updateContribution,
   updateEventDetails,
   votePoll,
@@ -20,7 +20,11 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { PlannerProfile } from "@/lib/events/event-room-data";
+import type {
+  EventRoomMember,
+  EventRoomPollVote,
+  PlannerProfile,
+} from "@/lib/events/event-room-data";
 
 type Message = {
   id: string;
@@ -50,11 +54,14 @@ const EMOJIS = ["👍", "🎉", "❓"];
 export function EventRoom({
   eventId,
   pinId,
+  plannerId,
   status,
   visibility,
   initialMessages,
   initialReactions,
   initialPolls,
+  initialPollVotes,
+  memberRoster,
   isPlanner,
   isMember,
   myUserId,
@@ -70,11 +77,14 @@ export function EventRoom({
 }: {
   eventId: string;
   pinId: string;
+  plannerId: string;
   status: string;
   visibility: string;
   initialMessages: Message[];
   initialReactions: Reaction[];
   initialPolls: Poll[];
+  initialPollVotes: EventRoomPollVote[];
+  memberRoster: EventRoomMember[];
   isPlanner: boolean;
   isMember: boolean;
   myUserId: string;
@@ -97,7 +107,9 @@ export function EventRoom({
   const [messages, setMessages] = useState(initialMessages);
   const [reactions, setReactions] = useState(initialReactions);
   const [polls, setPolls] = useState(initialPolls);
+  const [pollVotes, setPollVotes] = useState(initialPollVotes);
   const [contributions, setContributions] = useState(initialContributions);
+  const [liveStatus, setLiveStatus] = useState(status);
   const myContribution = contributions.find((c) => c.user_id === myUserId);
   const [broadcast, setBroadcast] = useState("");
   const [pollQ, setPollQ] = useState("");
@@ -162,21 +174,38 @@ export function EventRoom({
         .eq("event_id", eventId),
     ]);
 
+    const pollList = (p ?? []) as Poll[];
+    const pollIds = pollList.map((x) => x.id);
+    const { data: pv } =
+      pollIds.length > 0
+        ? await supabase
+            .from("poll_votes")
+            .select("poll_id, option_id, user_id")
+            .in("poll_id", pollIds)
+        : { data: [] as EventRoomPollVote[] };
+
     setMessages((m ?? []) as Message[]);
     setReactions((r ?? []) as Reaction[]);
-    setPolls((p ?? []) as Poll[]);
+    setPolls(pollList);
+    setPollVotes((pv ?? []) as EventRoomPollVote[]);
     setContributions((c ?? []) as Contribution[]);
   }, [eventId]);
+
+  useEffect(() => {
+    setLiveStatus(status);
+  }, [status]);
 
   useEffect(() => {
     setMessages(initialMessages);
     setReactions(initialReactions);
     setPolls(initialPolls);
+    setPollVotes(initialPollVotes);
     setContributions(initialContributions);
   }, [
     initialMessages,
     initialReactions,
     initialPolls,
+    initialPollVotes,
     initialContributions,
   ]);
 
@@ -184,6 +213,20 @@ export function EventRoom({
     const supabase = createClient();
     const ch = supabase
       .channel(`room:${eventId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "events",
+          filter: `id=eq.${eventId}`,
+        },
+        (payload) => {
+          const row = payload.new as { status?: string };
+          if (typeof row?.status === "string") setLiveStatus(row.status);
+          void reload();
+        },
+      )
       .on(
         "postgres_changes",
         {
@@ -267,13 +310,32 @@ export function EventRoom({
     }
   }
 
-  async function onReact(messageId: string, emoji: string) {
-    try {
-      await addReaction(messageId, emoji);
-      await reload();
-    } catch {
-      /* duplicate ok */
-    }
+  function onReact(messageId: string, emoji: string) {
+    const had = reactions.some(
+      (r) =>
+        r.message_id === messageId &&
+        r.user_id === myUserId &&
+        r.emoji === emoji,
+    );
+    setReactions((prev) =>
+      had
+        ? prev.filter(
+            (r) =>
+              !(
+                r.message_id === messageId &&
+                r.user_id === myUserId &&
+                r.emoji === emoji
+              ),
+          )
+        : [...prev, { message_id: messageId, user_id: myUserId, emoji }],
+    );
+    void (async () => {
+      try {
+        await toggleReaction(messageId, emoji);
+      } catch {
+        await reload();
+      }
+    })();
   }
 
   async function onCreatePoll(e: React.FormEvent) {
@@ -301,14 +363,34 @@ export function EventRoom({
     }
   }
 
-  async function onVote(pollId: string, optionId: string) {
-    try {
-      await votePoll(pollId, optionId);
-      await reload();
-    } catch (er) {
-      setErr(er instanceof Error ? er.message : "Vote failed");
-    }
+  function onVote(pollId: string, optionId: string) {
+    const withoutMine = pollVotes.filter(
+      (v) => !(v.poll_id === pollId && v.user_id === myUserId),
+    );
+    setPollVotes([
+      ...withoutMine,
+      { poll_id: pollId, option_id: optionId, user_id: myUserId },
+    ]);
+    void (async () => {
+      try {
+        await votePoll(pollId, optionId);
+      } catch (er) {
+        setErr(er instanceof Error ? er.message : "Vote failed");
+        await reload();
+      }
+    })();
   }
+
+  const plannerHasContributed = contributions.some(
+    (c) => c.user_id === plannerId,
+  );
+  const memberSubmissionsLocked = plannerHasContributed && !isPlanner;
+
+  useEffect(() => {
+    if (liveStatus === "review_open" && memberSubmissionsLocked && editContrib) {
+      setEditContrib(false);
+    }
+  }, [liveStatus, memberSubmissionsLocked, editContrib]);
 
   const inEvent = isMember || isPlanner;
 
@@ -337,13 +419,14 @@ export function EventRoom({
     );
   }
 
-  const reviewOpen = status === "review_open";
+  const reviewOpen = liveStatus === "review_open";
   const canInviteGuests =
     eventNotStarted &&
     inEvent &&
     (isPlanner || (membersCanInviteFriends && isMember));
   const canPlannerDeleteEvent =
-    isPlanner && (status === "scheduled" || status === "live");
+    isPlanner &&
+    (liveStatus === "scheduled" || liveStatus === "live");
   const canPlannerEditEventDetails = isPlanner && eventNotStarted;
 
   async function saveEventEdits(e: React.FormEvent) {
@@ -550,26 +633,74 @@ export function EventRoom({
               Group review
             </h2>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              This event is in review — share your honest take. Be constructive;
-              see community guidelines.
+              {isPlanner
+                ? "When you submit your review, other members can no longer add or change theirs. Everyone sees this panel as soon as you open the window."
+                : "The review window is open — share your honest take. Be constructive; see community guidelines."}
             </p>
+            {isPlanner ? (
+              <div className="mt-3 rounded-lg border border-emerald-200/80 bg-white/70 p-3 dark:border-emerald-900 dark:bg-emerald-950/50">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">
+                  Who has submitted
+                </p>
+                <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto text-sm text-zinc-700 dark:text-zinc-300">
+                  {memberRoster.map((m) => {
+                    const done = contributions.some(
+                      (c) => c.user_id === m.user_id,
+                    );
+                    return (
+                      <li
+                        key={m.user_id}
+                        className="flex items-center justify-between gap-2"
+                      >
+                        <span>
+                          {m.display_name}
+                          {m.user_id === plannerId ? (
+                            <span className="text-zinc-500"> · host</span>
+                          ) : null}
+                        </span>
+                        <span
+                          className={
+                            done
+                              ? "font-medium text-emerald-700 dark:text-emerald-400"
+                              : "text-zinc-400"
+                          }
+                        >
+                          {done ? "Done" : "Waiting"}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            {memberSubmissionsLocked && !myContribution ? (
+              <div className="rounded-lg border border-amber-200/90 bg-amber-50/90 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                The host has submitted their review. New submissions from
+                members are closed for this event.
+              </div>
+            ) : null}
+
             {myContribution && !editContrib ? (
               <div className="space-y-2">
                 <p className="text-sm text-zinc-700 dark:text-zinc-300">
-                  You submitted your review ({myContribution.rating}/5). You can
-                  edit while this window is open.
+                  You submitted your review ({myContribution.rating}/5).
+                  {isPlanner || !memberSubmissionsLocked
+                    ? " You can edit while this window is open."
+                    : " Editing closed after the host submitted."}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setEditContrib(true)}
-                  className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-600"
-                >
-                  Edit my review
-                </button>
+                {isPlanner || !memberSubmissionsLocked ? (
+                  <button
+                    type="button"
+                    onClick={() => setEditContrib(true)}
+                    className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-600"
+                  >
+                    Edit my review
+                  </button>
+                ) : null}
               </div>
-            ) : (
+            ) : !memberSubmissionsLocked || isPlanner ? (
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -650,14 +781,18 @@ export function EventRoom({
                   ) : null}
                 </div>
               </form>
-            )}
+            ) : null}
             <ul className="mt-6 space-y-2 border-t border-emerald-200/80 pt-4 text-sm text-zinc-600 dark:border-emerald-900 dark:text-zinc-400">
               <li className="text-xs font-medium uppercase text-zinc-500">
                 Submissions ({contributions.length})
               </li>
               {contributions.map((c) => (
                 <li key={c.user_id}>
-                  {c.user_id === myUserId ? "You" : "Member"} — {c.rating}/5
+                  {c.user_id === myUserId
+                    ? "You"
+                    : memberRoster.find((m) => m.user_id === c.user_id)
+                        ?.display_name ?? "Member"}{" "}
+                  — {c.rating}/5
                   {c.body ? (
                     <span className="block text-zinc-500">
                       {c.body.slice(0, 120)}
@@ -701,17 +836,29 @@ export function EventRoom({
                       {msg.body}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {EMOJIS.map((em) => (
-                        <button
-                          key={em}
-                          type="button"
-                          className="rounded border border-zinc-200 px-2 py-0.5 text-sm dark:border-zinc-700"
-                          onClick={() => void onReact(msg.id, em)}
-                        >
-                          {em}{" "}
-                          {reactionCount.get(msg.id)?.get(em) ?? 0}
-                        </button>
-                      ))}
+                      {EMOJIS.map((em) => {
+                        const mine = reactions.some(
+                          (r) =>
+                            r.message_id === msg.id &&
+                            r.user_id === myUserId &&
+                            r.emoji === em,
+                        );
+                        return (
+                          <button
+                            key={em}
+                            type="button"
+                            className={`rounded border px-2 py-0.5 text-sm transition-colors ${
+                              mine
+                                ? "border-emerald-500 bg-emerald-100/90 text-emerald-900 dark:border-emerald-600 dark:bg-emerald-950/80 dark:text-emerald-100"
+                                : "border-zinc-200 dark:border-zinc-700"
+                            }`}
+                            onClick={() => onReact(msg.id, em)}
+                          >
+                            {em}{" "}
+                            {reactionCount.get(msg.id)?.get(em) ?? 0}
+                          </button>
+                        );
+                      })}
                     </div>
                   </li>
                 ))
@@ -723,7 +870,13 @@ export function EventRoom({
                   Polls
                 </p>
                 {polls.map((poll) => (
-                  <PollBlock key={poll.id} poll={poll} onVote={onVote} />
+                  <PollBlock
+                    key={poll.id}
+                    poll={poll}
+                    myUserId={myUserId}
+                    pollVotes={pollVotes}
+                    onVote={onVote}
+                  />
                 ))}
               </div>
             ) : null}
@@ -799,57 +952,66 @@ export function EventRoom({
 
 function PollBlock({
   poll,
+  myUserId,
+  pollVotes,
   onVote,
 }: {
   poll: Poll;
+  myUserId: string;
+  pollVotes: EventRoomPollVote[];
   onVote: (pollId: string, optionId: string) => void;
 }) {
-  const [votes, setVotes] = useState<
-    { option_id: string; count: number }[] | null
-  >(null);
+  const forPoll = useMemo(
+    () => pollVotes.filter((v) => v.poll_id === poll.id),
+    [poll.id, pollVotes],
+  );
 
-  useEffect(() => {
-    const supabase = createClient();
-    void (async () => {
-      const { data } = await supabase
-        .from("poll_votes")
-        .select("option_id")
-        .eq("poll_id", poll.id);
-      const counts = new Map<string, number>();
-      for (const row of data ?? []) {
-        counts.set(row.option_id, (counts.get(row.option_id) ?? 0) + 1);
-      }
-      setVotes(
-        [...counts.entries()].map(([option_id, count]) => ({
-          option_id,
-          count,
-        })),
-      );
-    })();
-  }, [poll.id]);
+  const countMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const v of forPoll) {
+      m.set(v.option_id, (m.get(v.option_id) ?? 0) + 1);
+    }
+    return m;
+  }, [forPoll]);
 
-  const countMap = new Map((votes ?? []).map((v) => [v.option_id, v.count]));
+  const myVote = useMemo(
+    () => forPoll.find((v) => v.user_id === myUserId),
+    [forPoll, myUserId],
+  );
 
   return (
     <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
-      <p className="font-medium">{poll.question}</p>
-      <ul className="mt-2 space-y-1">
+      <p className="font-medium text-zinc-900 dark:text-zinc-50">
+        {poll.question}
+      </p>
+      <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+        Choose one option. You can change your vote anytime.
+      </p>
+      <ul className="mt-3 space-y-2">
         {[...(poll.poll_options ?? [])]
           .sort((a, b) => a.sort_order - b.sort_order)
-          .map((o) => (
-            <li key={o.id} className="flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => onVote(poll.id, o.id)}
-                className="text-left text-sm text-emerald-700 underline dark:text-emerald-400"
-              >
-                {o.label_text}
-              </button>
-              <span className="text-xs text-zinc-500">
-                {countMap.get(o.id) ?? 0} votes
-              </span>
-            </li>
-          ))}
+          .map((o) => {
+            const selected = myVote?.option_id === o.id;
+            return (
+              <li key={o.id}>
+                <button
+                  type="button"
+                  onClick={() => onVote(poll.id, o.id)}
+                  className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+                    selected
+                      ? "border-emerald-600 bg-emerald-50 text-zinc-900 dark:border-emerald-500 dark:bg-emerald-950/60 dark:text-zinc-50"
+                      : "border-zinc-200 bg-white/80 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900/40 dark:hover:border-zinc-600"
+                  }`}
+                >
+                  <span className="font-medium">{o.label_text}</span>
+                  <span className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400">
+                    {countMap.get(o.id) ?? 0}{" "}
+                    {(countMap.get(o.id) ?? 0) === 1 ? "vote" : "votes"}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
       </ul>
     </div>
   );

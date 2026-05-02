@@ -433,11 +433,14 @@ export function PinDetailPanel({
                 <EventRoom
                   eventId={eventIdParam}
                   pinId={pin.id}
+                  plannerId={eventPayload.data.event.planner_id}
                   status={eventPayload.data.event.status}
                   visibility={eventPayload.data.event.visibility}
                   initialMessages={eventPayload.data.messages}
                   initialReactions={eventPayload.data.reactions}
                   initialPolls={eventPayload.data.polls}
+                  initialPollVotes={eventPayload.data.pollVotes}
+                  memberRoster={eventPayload.data.memberRoster}
                   isPlanner={eventPayload.data.isPlanner}
                   isMember={eventPayload.data.isMember}
                   myUserId={myUserId ?? ""}
