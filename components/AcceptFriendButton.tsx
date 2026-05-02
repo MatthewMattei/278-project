@@ -23,7 +23,7 @@ export function AcceptFriendButton({ friendshipId }: { friendshipId: string }) {
     <button
       type="button"
       onClick={() => void onAccept()}
-      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-700"
+      className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700"
     >
       Accept
     </button>

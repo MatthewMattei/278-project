@@ -8,9 +8,12 @@ import { useEffect, useState } from "react";
 export function CreateEventForm({
   pinId,
   onSuccess,
+  defaultCollapsed = false,
 }: {
   pinId: string;
-  onSuccess?: () => void;
+  onSuccess?: (eventId: string) => void;
+  /** When true, show a compact prompt until the user expands the full form. */
+  defaultCollapsed?: boolean;
 }) {
   const router = useRouter();
   const [startsAt, setStartsAt] = useState("");
@@ -21,6 +24,7 @@ export function CreateEventForm({
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(!defaultCollapsed);
 
   useEffect(() => {
     if (inviteToken && typeof window !== "undefined") {
@@ -45,7 +49,7 @@ export function CreateEventForm({
         setInviteToken(ev.invite_token);
       }
       router.refresh();
-      onSuccess?.();
+      onSuccess?.(ev.id);
     } catch (er) {
       setErr(er instanceof Error ? er.message : "Failed");
     } finally {
@@ -53,9 +57,43 @@ export function CreateEventForm({
     }
   }
 
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className="w-full rounded-2xl border border-white/35 bg-white/80 px-4 py-4 text-left shadow-[0_8px_32px_rgba(15,23,42,0.08)] backdrop-blur-md transition hover:border-emerald-200/80 dark:border-zinc-600 dark:bg-zinc-900/70 dark:hover:border-emerald-800/60"
+      >
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700/95 dark:text-emerald-300">
+          Plan an outing
+        </p>
+        <p className="mt-1 text-sm font-medium text-zinc-900 dark:text-zinc-50">
+          Create an event at this place
+        </p>
+        <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+          Tap to add a time, details, and who can join — optional polls and chat
+          after you publish.
+        </p>
+      </button>
+    );
+  }
+
   return (
-    <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
-      <h3 className="font-semibold">Create event</h3>
+    <div className="rounded-3xl border border-white/35 bg-white/92 p-5 shadow-[0_24px_64px_rgba(15,23,42,0.12)] backdrop-blur-md dark:border-zinc-600 dark:bg-zinc-900/82">
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">
+          Create event
+        </h3>
+        {defaultCollapsed ? (
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="shrink-0 text-xs font-medium text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300"
+          >
+            Collapse
+          </button>
+        ) : null}
+      </div>
       <NormReminder context="event" />
       <form onSubmit={(e) => void onSubmit(e)} className="mt-4 space-y-3">
         <div>
@@ -65,7 +103,7 @@ export function CreateEventForm({
             required
             value={startsAt}
             onChange={(e) => setStartsAt(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+            className="mt-1 w-full rounded-xl border border-zinc-200/90 bg-white/70 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/50"
           />
         </div>
         <div>
@@ -76,7 +114,7 @@ export function CreateEventForm({
             max={500}
             value={capacity}
             onChange={(e) => setCapacity(Number(e.target.value))}
-            className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+            className="mt-1 w-full rounded-xl border border-zinc-200/90 bg-white/70 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/50"
           />
         </div>
         <div>
@@ -86,7 +124,7 @@ export function CreateEventForm({
             onChange={(e) =>
               setVisibility(e.target.value as "public" | "private")
             }
-            className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+            className="mt-1 w-full rounded-xl border border-zinc-200/90 bg-white/70 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/50"
           >
             <option value="public">Public</option>
             <option value="private">Private (invite link)</option>
@@ -100,7 +138,7 @@ export function CreateEventForm({
             value={blurb}
             onChange={(e) => setBlurb(e.target.value)}
             placeholder="Meeting spot, budget, what to expect…"
-            className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+            className="mt-1 w-full rounded-xl border border-zinc-200/90 bg-white/70 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/50"
           />
         </div>
         {err ? (

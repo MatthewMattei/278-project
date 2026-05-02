@@ -49,13 +49,13 @@ export function ProfileForm({
           id="display_name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+          className="mt-1 w-full rounded-xl border border-zinc-200/90 bg-white/70 px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-900/50"
         />
       </div>
       <button
         type="submit"
         disabled={saving}
-        className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+        className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60"
       >
         {saving ? "Saving…" : "Save"}
       </button>

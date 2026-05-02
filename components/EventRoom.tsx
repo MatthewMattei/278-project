@@ -52,6 +52,8 @@ export function EventRoom({
   isMember,
   myUserId,
   initialContributions,
+  showBackToPinLink = true,
+  onRefreshRoot,
 }: {
   eventId: string;
   pinId: string;
@@ -64,8 +66,17 @@ export function EventRoom({
   isMember: boolean;
   myUserId: string;
   initialContributions: Contribution[];
+  /** When false, hide footer link (e.g. parent panel handles navigation). */
+  showBackToPinLink?: boolean;
+  /** If set, called instead of router.refresh() so embedded parents can refetch. */
+  onRefreshRoot?: () => void;
 }) {
   const router = useRouter();
+
+  function refreshRoot() {
+    onRefreshRoot?.();
+    if (!onRefreshRoot) router.refresh();
+  }
   const [messages, setMessages] = useState(initialMessages);
   const [reactions, setReactions] = useState(initialReactions);
   const [polls, setPolls] = useState(initialPolls);
@@ -190,7 +201,7 @@ export function EventRoom({
     setErr(null);
     try {
       await joinPublicEvent(eventId);
-      router.refresh();
+      refreshRoot();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Join failed");
     }
@@ -291,7 +302,7 @@ export function EventRoom({
             onClick={() =>
               void (async () => {
                 await setEventLive(eventId);
-                router.refresh();
+                refreshRoot();
               })()
             }
           >
@@ -309,7 +320,7 @@ export function EventRoom({
             onClick={() =>
               void (async () => {
                 await openReviewWindow(eventId);
-                router.refresh();
+                refreshRoot();
               })()
             }
           >
@@ -321,7 +332,7 @@ export function EventRoom({
             onClick={() =>
               void (async () => {
                 await closeReviewManually(eventId);
-                router.refresh();
+                refreshRoot();
               })()
             }
           >
@@ -357,7 +368,7 @@ export function EventRoom({
                       await submitContribution(eventId, revBody, revRating);
                       setRevBody("");
                       await reload();
-                      router.refresh();
+                      refreshRoot();
                     } catch (er) {
                       setErr(
                         er instanceof Error ? er.message : "Could not submit",
@@ -537,14 +548,16 @@ export function EventRoom({
         <p className="text-sm text-red-600 dark:text-red-400">{err}</p>
       ) : null}
 
-      <p className="text-sm">
-        <a
-          href={`/map?pin=${encodeURIComponent(pinId)}`}
-          className="text-emerald-700 underline dark:text-emerald-400"
-        >
-          Back to pin
-        </a>
-      </p>
+      {showBackToPinLink ? (
+        <p className="text-sm">
+          <a
+            href={`/map?pin=${encodeURIComponent(pinId)}`}
+            className="text-emerald-700 underline dark:text-emerald-400"
+          >
+            Back to pin
+          </a>
+        </p>
+      ) : null}
     </div>
   );
 }

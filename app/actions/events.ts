@@ -69,6 +69,18 @@ export async function joinPrivateEventFromForm(formData: FormData) {
   const data = await joinPrivateEvent(token);
   const row = data as { event_id?: string } | null;
   if (row?.event_id) {
+    const supabase = await createClient();
+    const { data: ev } = await supabase
+      .from("events")
+      .select("pin_id")
+      .eq("id", row.event_id)
+      .single();
+    const pinId = (ev as { pin_id: string } | null)?.pin_id;
+    if (pinId) {
+      redirect(
+        `/map?pin=${encodeURIComponent(pinId)}&event=${encodeURIComponent(row.event_id)}`,
+      );
+    }
     redirect(`/events/${row.event_id}`);
   }
   redirect("/map");

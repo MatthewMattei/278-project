@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { PinDetailPanel } from "@/components/PinDetailPanel";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -132,89 +131,85 @@ export default function MapExplorer() {
   );
 
   return (
-    <div className="relative h-[calc(100vh-8rem)] w-full min-h-[420px]">
-      <MapContainer
-        key={mapKey}
-        center={[defaultCenter.lat, defaultCenter.lng]}
-        zoom={12}
-        scrollWheelZoom
-        className="z-0 h-full w-full [&_.leaflet-control-attribution]:text-[10px]"
-        style={{ height: "100%", width: "100%" }}
-      >
-        <TileLayer
-          attribution={attribution}
-          url={tileUrl}
-          subdomains={subdomains}
-        />
-        <MapClickHandler onClick={onMapClick} />
-        {pins.map((p) => (
-          <Marker
-            key={p.id}
-            position={[p.lat, p.lng]}
-            icon={markerIcon}
-            eventHandlers={{
-              click: (e) => {
-                L.DomEvent.stopPropagation(e.originalEvent);
-                openPin(p.id);
-              },
-            }}
-          />
-        ))}
-      </MapContainer>
-
-      <div className="pointer-events-none absolute left-3 top-3 z-[1000] max-w-sm rounded-lg bg-white/95 p-3 text-sm shadow-md dark:bg-zinc-900/95">
-        <p className="pointer-events-auto text-zinc-700 dark:text-zinc-300">
-          Tap the map to drop a pin. Tap a marker to view reviews and events
-          here.
-        </p>
-        <Link
-          href="/guidelines"
-          className="pointer-events-auto mt-2 inline-block text-emerald-700 underline dark:text-emerald-400"
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="relative min-h-0 flex-1">
+        <MapContainer
+          key={mapKey}
+          center={[defaultCenter.lat, defaultCenter.lng]}
+          zoom={12}
+          scrollWheelZoom
+          className="z-0 h-full w-full min-h-[320px] [&_.leaflet-control-attribution]:text-[10px]"
+          style={{ height: "100%", width: "100%" }}
         >
-          Community guidelines
-        </Link>
+          <TileLayer
+            attribution={attribution}
+            url={tileUrl}
+            subdomains={subdomains}
+          />
+          <MapClickHandler onClick={onMapClick} />
+          {pins.map((p) => (
+            <Marker
+              key={p.id}
+              position={[p.lat, p.lng]}
+              icon={markerIcon}
+              eventHandlers={{
+                click: (e) => {
+                  L.DomEvent.stopPropagation(e.originalEvent);
+                  openPin(p.id);
+                },
+              }}
+            />
+          ))}
+        </MapContainer>
+
+        {draft ? (
+          <div className="absolute bottom-6 left-1/2 z-[1000] w-[min(100%-2rem,420px)] -translate-x-1/2 rounded-3xl border border-white/35 bg-white/95 p-4 shadow-[0_24px_64px_rgba(15,23,42,0.28)] backdrop-blur-md dark:border-zinc-600 dark:bg-zinc-900/92">
+            <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">
+              New pin
+            </h3>
+            <p className="mt-1 text-xs text-zinc-500">
+              {draft.lat.toFixed(5)}, {draft.lng.toFixed(5)}
+            </p>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Place name"
+              className="mt-3 w-full rounded-xl border border-zinc-200/90 bg-white/70 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/50"
+            />
+            {err ? (
+              <p className="mt-2 text-sm text-red-600 dark:text-red-400">{err}</p>
+            ) : null}
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                disabled={saving || !title.trim()}
+                onClick={() => void savePin()}
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {saving ? "Saving…" : "Save pin"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDraft(null)}
+                className="rounded-xl border border-zinc-200/90 bg-white/70 px-4 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900/50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {selectedPinId ? (
+          <PinDetailPanel pinId={selectedPinId} onClose={closePinPanel} />
+        ) : null}
       </div>
 
-      {draft ? (
-        <div className="absolute bottom-6 left-1/2 z-[1000] w-[min(100%-2rem,420px)] -translate-x-1/2 rounded-xl border border-zinc-200 bg-white p-4 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
-          <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">
-            New pin
-          </h3>
-          <p className="mt-1 text-xs text-zinc-500">
-            {draft.lat.toFixed(5)}, {draft.lng.toFixed(5)}
-          </p>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Place name"
-            className="mt-3 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800"
-          />
-          {err ? (
-            <p className="mt-2 text-sm text-red-600 dark:text-red-400">{err}</p>
-          ) : null}
-          <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              disabled={saving || !title.trim()}
-              onClick={() => void savePin()}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {saving ? "Saving…" : "Save pin"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setDraft(null)}
-              className="rounded-lg border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-600"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {selectedPinId ? (
-        <PinDetailPanel pinId={selectedPinId} onClose={closePinPanel} />
-      ) : null}
+      <div className="shrink-0 border-t border-zinc-200/80 bg-white/90 px-4 py-3 backdrop-blur-md dark:border-zinc-700 dark:bg-zinc-900/90">
+        <p className="text-center text-sm text-zinc-700 dark:text-zinc-300">
+          Tap the map to drop a pin. Tap a marker to open this place — upcoming
+          events and group reviews live in the panel on the right.
+        </p>
+      </div>
     </div>
   );
 }

@@ -19,7 +19,7 @@ export default async function AppGroupLayout({
   return (
     <div className="flex min-h-screen flex-col">
       <AppNav />
-      <div className="flex-1">{children}</div>
+      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
     </div>
   );
 }
