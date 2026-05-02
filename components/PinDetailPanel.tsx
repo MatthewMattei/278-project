@@ -106,16 +106,22 @@ export function PinDetailPanel({
   > | null>(null);
   const [eventLoading, setEventLoading] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [reviewCommentAnchorUserId, setReviewCommentAnchorUserId] = useState<
+    string | null
+  >(null);
 
-  function mapQuery(next: { event?: string | null; review?: string | null }) {
-    const p = new URLSearchParams();
-    p.set("pin", pinId);
-    const ev = next.event !== undefined ? next.event : eventIdParam;
-    const rv = next.review !== undefined ? next.review : reviewIdParam;
-    if (ev) p.set("event", ev);
-    if (rv) p.set("review", rv);
-    router.replace(`/map?${p.toString()}`, { scroll: false });
-  }
+  const mapQuery = useCallback(
+    (next: { event?: string | null; review?: string | null }) => {
+      const p = new URLSearchParams();
+      p.set("pin", pinId);
+      const ev = next.event !== undefined ? next.event : eventIdParam;
+      const rv = next.review !== undefined ? next.review : reviewIdParam;
+      if (ev) p.set("event", ev);
+      if (rv) p.set("review", rv);
+      router.replace(`/map?${p.toString()}`, { scroll: false });
+    },
+    [router, pinId, eventIdParam, reviewIdParam],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -187,6 +193,29 @@ export function PinDetailPanel({
     const cRows = (commentsData ?? []) as CommentRow[];
     setCommentRows(cRows);
 
+    const sourceIds = [
+      ...new Set(
+        revs
+          .map((r) => r.source_event_id)
+          .filter((id): id is string => id != null),
+      ),
+    ];
+    let plannerIdsFromSourceEvents: string[] = [];
+    if (sourceIds.length) {
+      const { data: evRows } = await supabase
+        .from("events")
+        .select("id, planner_id")
+        .in("id", sourceIds);
+      setPlannerByEventId(
+        new Map((evRows ?? []).map((e) => [e.id, e.planner_id])),
+      );
+      plannerIdsFromSourceEvents = [
+        ...new Set((evRows ?? []).map((e) => e.planner_id as string)),
+      ];
+    } else {
+      setPlannerByEventId(new Map());
+    }
+
     const memberIdsFromSummaries = [
       ...new Set(
         revs.flatMap((r) =>
@@ -196,7 +225,11 @@ export function PinDetailPanel({
     ];
     const commentAuthorIds = [...new Set(cRows.map((c) => c.author_id))];
     const allProfileIds = [
-      ...new Set([...commentAuthorIds, ...memberIdsFromSummaries]),
+      ...new Set([
+        ...commentAuthorIds,
+        ...memberIdsFromSummaries,
+        ...plannerIdsFromSourceEvents,
+      ]),
     ];
     const { data: profiles } = allProfileIds.length
       ? await supabase
@@ -231,25 +264,6 @@ export function PinDetailPanel({
         ),
       })) as EventRow[],
     );
-
-    const sourceIds = [
-      ...new Set(
-        revs
-          .map((r) => r.source_event_id)
-          .filter((id): id is string => id != null),
-      ),
-    ];
-    if (sourceIds.length) {
-      const { data: evRows } = await supabase
-        .from("events")
-        .select("id, planner_id")
-        .in("id", sourceIds);
-      setPlannerByEventId(
-        new Map((evRows ?? []).map((e) => [e.id, e.planner_id])),
-      );
-    } else {
-      setPlannerByEventId(new Map());
-    }
 
     setLoading(false);
   }, [pinId]);
@@ -296,6 +310,28 @@ export function PinDetailPanel({
     };
   }, [eventIdParam, myUserId]);
 
+  useEffect(() => {
+    if (!eventIdParam || !pinId || !eventPayload?.ok) return;
+    if (eventPayload.data.event.status !== "completed") return;
+    let cancelled = false;
+    void (async () => {
+      const supabase = createClient();
+      const { data: rev } = await supabase
+        .from("reviews")
+        .select("id")
+        .eq("pin_id", pinId)
+        .eq("scope", "group")
+        .eq("source_event_id", eventIdParam)
+        .maybeSingle();
+      if (cancelled) return;
+      if (rev?.id) mapQuery({ event: null, review: rev.id });
+      else mapQuery({ event: null });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [eventIdParam, pinId, eventPayload, mapQuery]);
+
   const activeReview = useMemo(
     () => groupReviews.find((r) => r.id === reviewIdParam) ?? null,
     [groupReviews, reviewIdParam],
@@ -338,6 +374,10 @@ export function PinDetailPanel({
       setGroupReviewEdit(false);
     }
   }, [activeReview?.id, activeReview?.title, activeReview?.body]);
+
+  useEffect(() => {
+    setReviewCommentAnchorUserId(null);
+  }, [activeReview?.id]);
 
   return (
     <>
@@ -406,7 +446,13 @@ export function PinDetailPanel({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4">
+        <div
+          className={
+            !loading && pin && eventIdParam
+              ? "flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-6 pt-4"
+              : "min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4"
+          }
+        >
           {!loading && pin && eventIdParam ? (
             eventLoading || !eventPayload ? (
               <p className="text-sm text-zinc-500">Loading event…</p>
@@ -418,51 +464,57 @@ export function PinDetailPanel({
               <p className="text-sm text-red-600 dark:text-red-400">
                 This event is not for this place.
               </p>
+            ) : eventPayload.data.event.status === "completed" ? (
+              <p className="text-sm text-zinc-500">Opening group review…</p>
             ) : !myUserId ? (
               <p className="text-sm text-zinc-500">Loading…</p>
             ) : (
-              <div className="space-y-3">
-                <p className="text-xs text-zinc-500">
-                  {new Date(eventPayload.data.event.starts_at).toLocaleString()}{" "}
-                  · {eventPayload.data.event.status} ·{" "}
-                  {eventPayload.data.event.visibility}
-                </p>
-                <p className="text-sm text-zinc-800 dark:text-zinc-200">
-                  {eventPayload.data.event.blurb}
-                </p>
-                <EventRoom
-                  eventId={eventIdParam}
-                  pinId={pin.id}
-                  plannerId={eventPayload.data.event.planner_id}
-                  status={eventPayload.data.event.status}
-                  visibility={eventPayload.data.event.visibility}
-                  initialMessages={eventPayload.data.messages}
-                  initialReactions={eventPayload.data.reactions}
-                  initialPolls={eventPayload.data.polls}
-                  initialPollVotes={eventPayload.data.pollVotes}
-                  memberRoster={eventPayload.data.memberRoster}
-                  isPlanner={eventPayload.data.isPlanner}
-                  isMember={eventPayload.data.isMember}
-                  myUserId={myUserId ?? ""}
-                  initialContributions={eventPayload.data.contributions}
-                  showBackToPinLink={false}
-                  onRefreshRoot={() => void reloadEventPayload()}
-                  onEventDeleted={() => {
-                    mapQuery({ event: null });
-                    void load();
-                  }}
-                  onLeftEvent={() => {
-                    mapQuery({ event: null });
-                    void load();
-                  }}
-                  plannerProfile={eventPayload.data.plannerProfile}
-                  eventStartsAt={eventPayload.data.event.starts_at}
-                  eventBlurb={eventPayload.data.event.blurb}
-                  eventCapacity={eventPayload.data.event.capacity}
-                  membersCanInviteFriends={Boolean(
-                    eventPayload.data.event.members_can_invite_friends,
-                  )}
-                />
+              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+                <div className="shrink-0 space-y-3">
+                  <p className="text-xs text-zinc-500">
+                    {new Date(eventPayload.data.event.starts_at).toLocaleString()}{" "}
+                    · {eventPayload.data.event.status} ·{" "}
+                    {eventPayload.data.event.visibility}
+                  </p>
+                  <p className="text-sm text-zinc-800 dark:text-zinc-200">
+                    {eventPayload.data.event.blurb}
+                  </p>
+                </div>
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <EventRoom
+                    eventId={eventIdParam}
+                    pinId={pin.id}
+                    plannerId={eventPayload.data.event.planner_id}
+                    status={eventPayload.data.event.status}
+                    visibility={eventPayload.data.event.visibility}
+                    initialMessages={eventPayload.data.messages}
+                    initialReactions={eventPayload.data.reactions}
+                    initialPolls={eventPayload.data.polls}
+                    initialPollVotes={eventPayload.data.pollVotes}
+                    memberRoster={eventPayload.data.memberRoster}
+                    isPlanner={eventPayload.data.isPlanner}
+                    isMember={eventPayload.data.isMember}
+                    myUserId={myUserId ?? ""}
+                    initialContributions={eventPayload.data.contributions}
+                    showBackToPinLink={false}
+                    onRefreshRoot={() => void reloadEventPayload()}
+                    onEventDeleted={() => {
+                      mapQuery({ event: null });
+                      void load();
+                    }}
+                    onLeftEvent={() => {
+                      mapQuery({ event: null });
+                      void load();
+                    }}
+                    plannerProfile={eventPayload.data.plannerProfile}
+                    eventStartsAt={eventPayload.data.event.starts_at}
+                    eventBlurb={eventPayload.data.event.blurb}
+                    eventCapacity={eventPayload.data.event.capacity}
+                    membersCanInviteFriends={Boolean(
+                      eventPayload.data.event.members_can_invite_friends,
+                    )}
+                  />
+                </div>
               </div>
             )
           ) : null}
@@ -581,21 +633,55 @@ export function PinDetailPanel({
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700/90 dark:text-emerald-300">
                     Everyone&apos;s take
                   </p>
+                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                    Tap someone&apos;s review to tie your comment to their
+                    perspective (optional).
+                  </p>
                   <ul className="mt-3 space-y-2">
-                    {activeReview.member_summaries.map((m, i) => (
-                      <li
-                        key={`${m.user_id}-${i}`}
-                        className="rounded-2xl border border-zinc-200/80 bg-white/60 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900/40"
-                      >
-                        <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                          {m.rating}/5
-                        </span>
-                        <span className="text-zinc-600 dark:text-zinc-400">
-                          {" "}
-                          — {m.excerpt}
-                        </span>
-                      </li>
-                    ))}
+                    {activeReview.member_summaries.map((m, i) => {
+                      const reviewHostId =
+                        activeReview.source_event_id &&
+                        plannerByEventId.get(activeReview.source_event_id);
+                      const isEventHost = reviewHostId === m.user_id;
+                      const personName =
+                        authorProfiles.get(m.user_id)?.display_name ??
+                        "Member";
+                      const selected =
+                        reviewCommentAnchorUserId === m.user_id;
+                      return (
+                        <li key={`${m.user_id}-${i}`}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setReviewCommentAnchorUserId((prev) =>
+                                prev === m.user_id ? null : m.user_id,
+                              )
+                            }
+                            className={`w-full rounded-2xl border px-3 py-2.5 text-left text-sm transition-colors dark:bg-zinc-900/40 ${
+                              selected
+                                ? "border-emerald-500 bg-emerald-50/90 dark:border-emerald-600 dark:bg-emerald-950/50"
+                                : "border-zinc-200/80 bg-white/60 hover:border-emerald-200 dark:border-zinc-700"
+                            }`}
+                          >
+                            <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                              {personName}
+                            </span>
+                            {isEventHost ? (
+                              <span className="ml-2 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 dark:bg-amber-950/80 dark:text-amber-200">
+                                Hosted event
+                              </span>
+                            ) : null}
+                            <span className="mt-1 block font-medium text-zinc-800 dark:text-zinc-200">
+                              {m.rating}/5
+                              <span className="font-normal text-zinc-600 dark:text-zinc-400">
+                                {" "}
+                                — {m.excerpt}
+                              </span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ) : null}
@@ -608,6 +694,8 @@ export function PinDetailPanel({
                   memberSummaries={activeReview.member_summaries ?? []}
                   authors={authorProfiles}
                   myUserId={myUserId}
+                  threadAnchorUserId={reviewCommentAnchorUserId}
+                  onThreadAnchorChange={setReviewCommentAnchorUserId}
                   onRefresh={() => void load()}
                 />
               ) : null}
@@ -789,6 +877,12 @@ export function PinDetailPanel({
                         const host = hostExcerpt(r);
                         const stars = reviewStarDisplay(r);
                         const count = reviewPersonCount(r);
+                        const reviewPlannerId =
+                          r.source_event_id &&
+                          plannerByEventId.get(r.source_event_id);
+                        const hostName =
+                          reviewPlannerId &&
+                          authorProfiles.get(reviewPlannerId)?.display_name;
                         return (
                           <li key={r.id}>
                             <button
@@ -811,6 +905,11 @@ export function PinDetailPanel({
                                   {new Date(r.created_at).toLocaleDateString()}
                                 </span>
                               </div>
+                              {hostName ? (
+                                <p className="mt-1 text-xs font-medium text-amber-900/90 dark:text-amber-200/90">
+                                  Event host: {hostName}
+                                </p>
+                              ) : null}
                               {r.title ? (
                                 <p className="mt-2 font-medium text-zinc-900 dark:text-zinc-100">
                                   {r.title}

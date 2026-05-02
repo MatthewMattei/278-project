@@ -522,7 +522,8 @@ export function EventRoom({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+      <div className="shrink-0 space-y-4">
       <div className="flex items-start gap-3 rounded-2xl border border-zinc-200/80 bg-white/60 p-3 dark:border-zinc-700 dark:bg-zinc-900/40">
         <AvatarImg
           src={plannerProfile?.avatar_url}
@@ -778,8 +779,10 @@ export function EventRoom({
         </div>
       ) : null}
 
+      </div>
+
       {reviewOpen ? (
-        <div className="flex max-h-[min(720px,85vh)] min-h-[320px] flex-col overflow-hidden rounded-xl border-2 border-emerald-300 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/25">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border-2 border-emerald-300 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/25">
           <div className="shrink-0 border-b border-emerald-200 px-4 py-3 dark:border-emerald-900">
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
               Group review
@@ -946,13 +949,7 @@ export function EventRoom({
           </div>
         </div>
       ) : (
-        <div
-          className={`relative flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 ${
-            isPlanner
-              ? "min-h-[min(72vh,760px)]"
-              : "min-h-[min(58vh,560px)]"
-          }`}
-        >
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
           <div className="shrink-0 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
               Event chat

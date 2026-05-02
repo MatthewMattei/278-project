@@ -255,6 +255,8 @@ export function ReviewCommentTree({
   memberSummaries,
   authors,
   myUserId,
+  threadAnchorUserId,
+  onThreadAnchorChange,
   onRefresh,
 }: {
   reviewId: string;
@@ -262,10 +264,12 @@ export function ReviewCommentTree({
   memberSummaries: { user_id: string }[];
   authors: Map<string, AuthorInfo>;
   myUserId: string;
+  /** When set, new top-level comments are threaded to this member summary. */
+  threadAnchorUserId: string | null;
+  onThreadAnchorChange: (userId: string | null) => void;
   onRefresh: () => void;
 }) {
   const [body, setBody] = useState("");
-  const [anchorUserId, setAnchorUserId] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -288,10 +292,10 @@ export function ReviewCommentTree({
         reviewId,
         body,
         parentId: null,
-        threadAnchorUserId: anchorUserId || null,
+        threadAnchorUserId: threadAnchorUserId,
       });
       setBody("");
-      setAnchorUserId("");
+      onThreadAnchorChange(null);
       onRefresh();
     } catch (er) {
       setErr(er instanceof Error ? er.message : "Failed");
@@ -325,26 +329,30 @@ export function ReviewCommentTree({
       </ul>
       <form onSubmit={(e) => void submitTop(e)} className="mt-4 space-y-2">
         <NormReminder context="review" />
-        {memberSummaries.length > 0 ? (
-          <div>
-            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-              Start a thread about (optional)
-            </label>
-            <select
-              value={anchorUserId}
-              onChange={(e) => setAnchorUserId(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-zinc-200/90 bg-white/70 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900/50"
+        {threadAnchorUserId ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-3 py-2 text-xs dark:border-emerald-900 dark:bg-emerald-950/40">
+            <span className="text-emerald-900 dark:text-emerald-200">
+              Comment on{" "}
+              <strong>
+                {authors.get(threadAnchorUserId)?.display_name ??
+                  "this perspective"}
+              </strong>
+              &apos;s take
+            </span>
+            <button
+              type="button"
+              className="text-emerald-800 underline dark:text-emerald-300"
+              onClick={() => onThreadAnchorChange(null)}
             >
-              <option value="">Whole group review</option>
-              {memberSummaries.map((m) => (
-                <option key={m.user_id} value={m.user_id}>
-                  {authors.get(m.user_id)?.display_name ?? m.user_id.slice(0, 8)}
-                  &apos;s take
-                </option>
-              ))}
-            </select>
+              Clear
+            </button>
           </div>
-        ) : null}
+        ) : (
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            Optional: select someone under &quot;Everyone&apos;s take&quot;
+            above to thread your comment to their review.
+          </p>
+        )}
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}

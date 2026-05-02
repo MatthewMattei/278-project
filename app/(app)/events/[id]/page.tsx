@@ -19,7 +19,25 @@ export default async function EventPage({
     redirect("/map");
   }
 
+  const pinId = result.data.event.pin_id;
+
+  if (result.data.event.status === "completed") {
+    const { data: rev } = await supabase
+      .from("reviews")
+      .select("id")
+      .eq("pin_id", pinId)
+      .eq("scope", "group")
+      .eq("source_event_id", eventId)
+      .maybeSingle();
+    if (rev?.id) {
+      redirect(
+        `/map?pin=${encodeURIComponent(pinId)}&review=${encodeURIComponent(rev.id)}`,
+      );
+    }
+    redirect(`/map?pin=${encodeURIComponent(pinId)}`);
+  }
+
   redirect(
-    `/map?pin=${encodeURIComponent(result.data.event.pin_id)}&event=${encodeURIComponent(eventId)}`,
+    `/map?pin=${encodeURIComponent(pinId)}&event=${encodeURIComponent(eventId)}`,
   );
 }
