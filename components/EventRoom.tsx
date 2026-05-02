@@ -475,7 +475,10 @@ export function EventRoom({
       ) : null}
 
       <p className="text-sm">
-        <a href={`/pins/${pinId}`} className="text-emerald-700 underline">
+        <a
+          href={`/map?pin=${encodeURIComponent(pinId)}`}
+          className="text-emerald-700 underline"
+        >
           Back to pin
         </a>
       </p>

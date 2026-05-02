@@ -5,7 +5,13 @@ import { NormReminder } from "@/components/NormReminder";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-export function CreateEventForm({ pinId }: { pinId: string }) {
+export function CreateEventForm({
+  pinId,
+  onSuccess,
+}: {
+  pinId: string;
+  onSuccess?: () => void;
+}) {
   const router = useRouter();
   const [startsAt, setStartsAt] = useState("");
   const [capacity, setCapacity] = useState(8);
@@ -39,6 +45,7 @@ export function CreateEventForm({ pinId }: { pinId: string }) {
         setInviteToken(ev.invite_token);
       }
       router.refresh();
+      onSuccess?.();
     } catch (er) {
       setErr(er instanceof Error ? er.message : "Failed");
     } finally {

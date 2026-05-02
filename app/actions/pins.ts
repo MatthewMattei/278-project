@@ -18,7 +18,6 @@ export async function createPin(lat: number, lng: number, title: string) {
 
   if (error) throw new Error(error.message);
   revalidatePath("/map");
-  revalidatePath(`/pins/${data.id}`);
   return data.id as string;
 }
 
@@ -44,5 +43,5 @@ export async function createIndividualReview(
   });
 
   if (error) throw new Error(error.message);
-  revalidatePath(`/pins/${pinId}`);
+  revalidatePath("/map");
 }

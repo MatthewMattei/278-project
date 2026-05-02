@@ -4,7 +4,13 @@ import { createIndividualReview } from "@/app/actions/pins";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export function IndividualReviewForm({ pinId }: { pinId: string }) {
+export function IndividualReviewForm({
+  pinId,
+  onSuccess,
+}: {
+  pinId: string;
+  onSuccess?: () => void;
+}) {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -26,6 +32,7 @@ export function IndividualReviewForm({ pinId }: { pinId: string }) {
       setBody("");
       setTitle("");
       router.refresh();
+      onSuccess?.();
       setMsg("Thanks — your review is live.");
     } catch (er) {
       setMsg(er instanceof Error ? er.message : "Failed");

@@ -80,7 +80,7 @@ export default async function EventPage({
           ) : null}
         </div>
         <Link
-          href={`/pins/${event.pin_id}`}
+          href={`/map?pin=${encodeURIComponent(event.pin_id)}`}
           className="text-sm font-medium text-emerald-700 dark:text-emerald-400"
         >
           View pin

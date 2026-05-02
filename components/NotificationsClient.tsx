@@ -86,7 +86,7 @@ export function NotificationsClient({
           {r.type === "friend_review" &&
           typeof r.payload.pin_id === "string" ? (
             <Link
-              href={`/pins/${r.payload.pin_id}`}
+              href={`/map?pin=${encodeURIComponent(r.payload.pin_id)}`}
               className="mt-1 block font-medium text-emerald-800 hover:underline dark:text-emerald-300"
             >
               A friend posted a review — view pin

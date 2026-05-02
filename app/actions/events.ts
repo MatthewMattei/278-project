@@ -33,7 +33,7 @@ export async function createEvent(input: {
     .single();
 
   if (error) throw new Error(error.message);
-  revalidatePath(`/pins/${input.pinId}`);
+  revalidatePath("/map");
   revalidatePath(`/events/${data.id}`);
   return data as { id: string; invite_token: string };
 }
@@ -154,7 +154,7 @@ export async function closeReviewManually(eventId: string) {
     .single();
 
   if (pinRow?.pin_id) {
-    revalidatePath(`/pins/${pinRow.pin_id}`);
+    revalidatePath("/map");
   }
   revalidatePath(`/events/${eventId}`);
 }

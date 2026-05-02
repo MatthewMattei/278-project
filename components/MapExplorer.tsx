@@ -4,8 +4,9 @@ import { createPin } from "@/app/actions/pins";
 import { createClient } from "@/lib/supabase/client";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { PinDetailPanel } from "@/components/PinDetailPanel";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   MapContainer,
@@ -58,6 +59,16 @@ function MapClickHandler({
 
 export default function MapExplorer() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedPinId = searchParams.get("pin");
+
+  function closePinPanel() {
+    router.replace("/map", { scroll: false });
+  }
+
+  function openPin(id: string) {
+    router.replace(`/map?pin=${encodeURIComponent(id)}`, { scroll: false });
+  }
   const [pins, setPins] = useState<PinRow[]>([]);
   const [draft, setDraft] = useState<{ lat: number; lng: number } | null>(
     null,
@@ -107,7 +118,7 @@ export default function MapExplorer() {
       setDraft(null);
       setTitle("");
       await loadPins();
-      router.push(`/pins/${id}`);
+      openPin(id);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not save pin");
     } finally {
@@ -144,7 +155,7 @@ export default function MapExplorer() {
             eventHandlers={{
               click: (e) => {
                 L.DomEvent.stopPropagation(e.originalEvent);
-                router.push(`/pins/${p.id}`);
+                openPin(p.id);
               },
             }}
           />
@@ -153,7 +164,8 @@ export default function MapExplorer() {
 
       <div className="pointer-events-none absolute left-3 top-3 z-[1000] max-w-sm rounded-lg bg-white/95 p-3 text-sm shadow-md dark:bg-zinc-900/95">
         <p className="pointer-events-auto text-zinc-700 dark:text-zinc-300">
-          Tap the map to drop a pin. Tap a marker to open the place.
+          Tap the map to drop a pin. Tap a marker to view reviews and events
+          here.
         </p>
         <Link
           href="/guidelines"
@@ -198,6 +210,10 @@ export default function MapExplorer() {
             </button>
           </div>
         </div>
+      ) : null}
+
+      {selectedPinId ? (
+        <PinDetailPanel pinId={selectedPinId} onClose={closePinPanel} />
       ) : null}
     </div>
   );
