@@ -341,6 +341,9 @@ export function EventRoom({
     eventNotStarted &&
     isMember &&
     (isPlanner || membersCanInviteFriends);
+  const canPlannerDeleteEvent =
+    isPlanner && (status === "scheduled" || status === "live");
+  const canPlannerEditEventDetails = isPlanner && eventNotStarted;
 
   async function saveEventEdits(e: React.FormEvent) {
     e.preventDefault();
@@ -402,7 +405,7 @@ export function EventRoom({
         />
       ) : null}
 
-      {isPlanner && eventNotStarted ? (
+      {canPlannerEditEventDetails ? (
         <div className="rounded-2xl border border-zinc-200/80 p-4 dark:border-zinc-700">
           {!editingEvent ? (
             <div className="flex flex-wrap gap-2">
@@ -479,6 +482,16 @@ export function EventRoom({
               </div>
             </form>
           )}
+        </div>
+      ) : canPlannerDeleteEvent ? (
+        <div className="rounded-2xl border border-zinc-200/80 p-4 dark:border-zinc-700">
+          <button
+            type="button"
+            onClick={() => void removeEvent()}
+            className="rounded-xl border border-red-200 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:text-red-400"
+          >
+            Delete event
+          </button>
         </div>
       ) : null}
 
