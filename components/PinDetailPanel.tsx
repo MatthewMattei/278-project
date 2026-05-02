@@ -109,6 +109,7 @@ export function PinDetailPanel({
   const [reviewCommentAnchorUserId, setReviewCommentAnchorUserId] = useState<
     string | null
   >(null);
+  const [cardRefreshing, setCardRefreshing] = useState(false);
 
   const mapQuery = useCallback(
     (next: { event?: string | null; review?: string | null }) => {
@@ -286,6 +287,17 @@ export function PinDetailPanel({
     void load();
   }, [eventIdParam, myUserId, load]);
 
+  const refreshCard = useCallback(async () => {
+    setCardRefreshing(true);
+    try {
+      if (eventIdParam && myUserId) await reloadEventPayload();
+      else await load();
+      router.refresh();
+    } finally {
+      setCardRefreshing(false);
+    }
+  }, [load, reloadEventPayload, eventIdParam, myUserId, router]);
+
   useEffect(() => {
     if (!eventIdParam || !myUserId) {
       setEventPayload(null);
@@ -437,22 +449,28 @@ export function PinDetailPanel({
               </p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 rounded-xl border border-zinc-200/90 bg-white/70 px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800/80 dark:text-zinc-200 dark:hover:bg-zinc-800"
-          >
-            Close
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {pin ? (
+              <button
+                type="button"
+                disabled={loading || cardRefreshing}
+                onClick={() => void refreshCard()}
+                className="rounded-xl border border-zinc-200/90 bg-white/70 px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800/80 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                {cardRefreshing ? "Refreshing…" : "Refresh"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-zinc-200/90 bg-white/70 px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800/80 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              Close
+            </button>
+          </div>
         </div>
 
-        <div
-          className={
-            !loading && pin && eventIdParam
-              ? "flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-6 pt-4"
-              : "min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4"
-          }
-        >
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4">
           {!loading && pin && eventIdParam ? (
             eventLoading || !eventPayload ? (
               <p className="text-sm text-zinc-500">Loading event…</p>
@@ -469,52 +487,48 @@ export function PinDetailPanel({
             ) : !myUserId ? (
               <p className="text-sm text-zinc-500">Loading…</p>
             ) : (
-              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
-                <div className="shrink-0 space-y-3">
-                  <p className="text-xs text-zinc-500">
-                    {new Date(eventPayload.data.event.starts_at).toLocaleString()}{" "}
-                    · {eventPayload.data.event.status} ·{" "}
-                    {eventPayload.data.event.visibility}
-                  </p>
-                  <p className="text-sm text-zinc-800 dark:text-zinc-200">
-                    {eventPayload.data.event.blurb}
-                  </p>
-                </div>
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <EventRoom
-                    eventId={eventIdParam}
-                    pinId={pin.id}
-                    plannerId={eventPayload.data.event.planner_id}
-                    status={eventPayload.data.event.status}
-                    visibility={eventPayload.data.event.visibility}
-                    initialMessages={eventPayload.data.messages}
-                    initialReactions={eventPayload.data.reactions}
-                    initialPolls={eventPayload.data.polls}
-                    initialPollVotes={eventPayload.data.pollVotes}
-                    memberRoster={eventPayload.data.memberRoster}
-                    isPlanner={eventPayload.data.isPlanner}
-                    isMember={eventPayload.data.isMember}
-                    myUserId={myUserId ?? ""}
-                    initialContributions={eventPayload.data.contributions}
-                    showBackToPinLink={false}
-                    onRefreshRoot={() => void reloadEventPayload()}
-                    onEventDeleted={() => {
-                      mapQuery({ event: null });
-                      void load();
-                    }}
-                    onLeftEvent={() => {
-                      mapQuery({ event: null });
-                      void load();
-                    }}
-                    plannerProfile={eventPayload.data.plannerProfile}
-                    eventStartsAt={eventPayload.data.event.starts_at}
-                    eventBlurb={eventPayload.data.event.blurb}
-                    eventCapacity={eventPayload.data.event.capacity}
-                    membersCanInviteFriends={Boolean(
-                      eventPayload.data.event.members_can_invite_friends,
-                    )}
-                  />
-                </div>
+              <div className="space-y-3">
+                <p className="text-xs text-zinc-500">
+                  {new Date(eventPayload.data.event.starts_at).toLocaleString()}{" "}
+                  · {eventPayload.data.event.status} ·{" "}
+                  {eventPayload.data.event.visibility}
+                </p>
+                <p className="text-sm text-zinc-800 dark:text-zinc-200">
+                  {eventPayload.data.event.blurb}
+                </p>
+                <EventRoom
+                  eventId={eventIdParam}
+                  pinId={pin.id}
+                  plannerId={eventPayload.data.event.planner_id}
+                  status={eventPayload.data.event.status}
+                  visibility={eventPayload.data.event.visibility}
+                  initialMessages={eventPayload.data.messages}
+                  initialReactions={eventPayload.data.reactions}
+                  initialPolls={eventPayload.data.polls}
+                  initialPollVotes={eventPayload.data.pollVotes}
+                  memberRoster={eventPayload.data.memberRoster}
+                  isPlanner={eventPayload.data.isPlanner}
+                  isMember={eventPayload.data.isMember}
+                  myUserId={myUserId ?? ""}
+                  initialContributions={eventPayload.data.contributions}
+                  showBackToPinLink={false}
+                  onRefreshRoot={() => void reloadEventPayload()}
+                  onEventDeleted={() => {
+                    mapQuery({ event: null });
+                    void load();
+                  }}
+                  onLeftEvent={() => {
+                    mapQuery({ event: null });
+                    void load();
+                  }}
+                  plannerProfile={eventPayload.data.plannerProfile}
+                  eventStartsAt={eventPayload.data.event.starts_at}
+                  eventBlurb={eventPayload.data.event.blurb}
+                  eventCapacity={eventPayload.data.event.capacity}
+                  membersCanInviteFriends={Boolean(
+                    eventPayload.data.event.members_can_invite_friends,
+                  )}
+                />
               </div>
             )
           ) : null}
