@@ -79,7 +79,16 @@ export function EventPrivateGuestPicker({
       await load();
       setMsg("Added to event.");
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Could not add");
+      const raw = e instanceof Error ? e.message : "";
+      if (raw.includes("already_started")) {
+        setMsg("This event has already started, so invites are closed.");
+      } else if (raw.includes("full")) {
+        setMsg("This event is full.");
+      } else if (raw.includes("not_friends")) {
+        setMsg("You can only invite people on your friends list.");
+      } else {
+        setMsg(raw || "Could not add");
+      }
     } finally {
       setBusyId(null);
     }

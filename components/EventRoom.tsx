@@ -338,6 +338,7 @@ export function EventRoom({
   const reviewOpen = status === "review_open";
   const canInviteGuests =
     visibility === "private" &&
+    eventNotStarted &&
     isMember &&
     (isPlanner || membersCanInviteFriends);
 
