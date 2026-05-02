@@ -2,6 +2,7 @@
 
 import { amalgamateEventReview } from "@/lib/reviews/amalgamate";
 import { createClient } from "@/lib/supabase/server";
+import { requireUserWithProfile } from "@/lib/supabase/ensure-profile";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -13,10 +14,7 @@ export async function createEvent(input: {
   blurb: string;
 }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  const user = await requireUserWithProfile(supabase);
 
   const { data, error } = await supabase
     .from("events")
@@ -40,6 +38,7 @@ export async function createEvent(input: {
 
 export async function joinPublicEvent(eventId: string) {
   const supabase = await createClient();
+  await requireUserWithProfile(supabase);
   const { data, error } = await supabase.rpc("join_public_event", {
     p_event_id: eventId,
   });
@@ -50,6 +49,7 @@ export async function joinPublicEvent(eventId: string) {
 
 export async function joinPrivateEvent(token: string) {
   const supabase = await createClient();
+  await requireUserWithProfile(supabase);
   const { data, error } = await supabase.rpc("join_private_event", {
     p_token: token,
   });
@@ -76,10 +76,7 @@ export async function joinPrivateEventFromForm(formData: FormData) {
 
 export async function setEventLive(eventId: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  const user = await requireUserWithProfile(supabase);
 
   const { error } = await supabase
     .from("events")
@@ -94,10 +91,7 @@ export async function setEventLive(eventId: string) {
 
 export async function openReviewWindow(eventId: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  const user = await requireUserWithProfile(supabase);
 
   const closes = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
@@ -131,10 +125,7 @@ export async function openReviewWindow(eventId: string) {
 
 export async function closeReviewManually(eventId: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  const user = await requireUserWithProfile(supabase);
 
   const { data: ev } = await supabase
     .from("events")
@@ -165,10 +156,7 @@ export async function submitContribution(
   rating: number,
 ) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  const user = await requireUserWithProfile(supabase);
 
   const { error } = await supabase.from("review_contributions").insert({
     event_id: eventId,
@@ -183,10 +171,7 @@ export async function submitContribution(
 
 export async function postPlannerBroadcast(eventId: string, body: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  const user = await requireUserWithProfile(supabase);
 
   const { error } = await supabase.from("event_messages").insert({
     event_id: eventId,
@@ -201,10 +186,7 @@ export async function postPlannerBroadcast(eventId: string, body: string) {
 
 export async function addReaction(messageId: string, emoji: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  const user = await requireUserWithProfile(supabase);
 
   const { error } = await supabase.from("message_reactions").insert({
     message_id: messageId,
@@ -223,10 +205,7 @@ export async function createPoll(input: {
   options: string[];
 }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  const user = await requireUserWithProfile(supabase);
 
   const { data: poll, error: pErr } = await supabase
     .from("polls")
@@ -253,10 +232,7 @@ export async function createPoll(input: {
 
 export async function votePoll(pollId: string, optionId: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  const user = await requireUserWithProfile(supabase);
 
   const { error } = await supabase.from("poll_votes").upsert(
     {
