@@ -285,7 +285,7 @@ export default function MapExplorer() {
                     void runPlaceSearch();
                   }
                 }}
-                placeholder="Search name or address (OSM)…"
+                placeholder="Search name or address ..."
                 autoComplete="off"
                 className="min-w-0 flex-1 rounded-xl border border-zinc-200/90 bg-white/80 px-3 py-2 text-sm text-zinc-900 outline-none ring-emerald-500/40 focus:ring-2 dark:border-zinc-600 dark:bg-zinc-800/80 dark:text-zinc-100"
               />
@@ -322,7 +322,7 @@ export default function MapExplorer() {
               >
                 Nominatim
               </a>
-              ). Results biased near Stanford.
+              ).
             </p>
             {searchOpen && searchResults.length > 0 ? (
               <ul className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-zinc-200/80 bg-white/90 dark:border-zinc-600 dark:bg-zinc-900/90">
