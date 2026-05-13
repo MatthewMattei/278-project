@@ -111,14 +111,24 @@ export async function deleteReviewComment(commentId: string) {
 
 export async function updateGroupReview(
   reviewId: string,
-  input: { title?: string | null; body?: string },
+  input: {
+    title?: string | null;
+    body?: string;
+    host_photo_url?: string | null;
+  },
 ) {
   const supabase = await createClient();
   await requireUserWithProfile(supabase);
 
+  const patch: Record<string, unknown> = {};
+  if (input.title !== undefined) patch.title = input.title;
+  if (input.body !== undefined) patch.body = input.body;
+  if (input.host_photo_url !== undefined)
+    patch.host_photo_url = input.host_photo_url;
+
   const { error } = await supabase
     .from("reviews")
-    .update(input)
+    .update(patch)
     .eq("id", reviewId)
     .eq("scope", "group");
 

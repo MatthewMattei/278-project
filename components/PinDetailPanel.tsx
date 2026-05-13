@@ -17,6 +17,29 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+async function uploadHostReviewPhoto(
+  reviewId: string,
+  file: File,
+): Promise<string> {
+  const supabase = createClient();
+  const rawExt = file.name.includes(".")
+    ? file.name.split(".").pop()?.toLowerCase()
+    : null;
+  const allowed = new Set(["jpg", "jpeg", "png", "gif", "webp"]);
+  const ext =
+    rawExt && allowed.has(rawExt) ? (rawExt === "jpeg" ? "jpg" : rawExt) : "jpg";
+  const path = `${reviewId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+  const { error } = await supabase.storage
+    .from("review_photos")
+    .upload(path, file, {
+      upsert: true,
+      contentType: file.type || undefined,
+    });
+  if (error) throw new Error(error.message);
+  const { data } = supabase.storage.from("review_photos").getPublicUrl(path);
+  return data.publicUrl;
+}
+
 type PinRow = {
   id: string;
   title: string;
@@ -48,6 +71,7 @@ type ReviewRow = {
   author_id: string | null;
   title: string | null;
   source_event_id: string | null;
+  host_photo_url: string | null;
 };
 
 type CommentRow = ThreadComment;
@@ -95,6 +119,8 @@ export function PinDetailPanel({
   const [groupReviewEdit, setGroupReviewEdit] = useState(false);
   const [groupTitle, setGroupTitle] = useState("");
   const [groupBody, setGroupBody] = useState("");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
   const [events, setEvents] = useState<EventRow[]>([]);
   const [plannerByEventId, setPlannerByEventId] = useState<
     Map<string, string>
@@ -163,7 +189,7 @@ export function PinDetailPanel({
       supabase
         .from("reviews")
         .select(
-          "id, scope, body, rating, stats, member_summaries, created_at, author_id, title, source_event_id",
+          "id, scope, body, rating, stats, member_summaries, created_at, author_id, title, source_event_id, host_photo_url",
         )
         .eq("pin_id", pinId)
         .eq("scope", "group")
@@ -187,6 +213,8 @@ export function PinDetailPanel({
         member_summaries: Array.isArray(r.member_summaries)
           ? (r.member_summaries as MemberSummary[])
           : null,
+        host_photo_url:
+          typeof r.host_photo_url === "string" ? r.host_photo_url : null,
       } as ReviewRow;
     });
     setGroupReviews(revs);
@@ -396,13 +424,40 @@ export function PinDetailPanel({
     !!activeReview?.source_event_id &&
     plannerByEventId.get(activeReview.source_event_id) === myUserId;
 
+  const photoObjectUrl = useMemo(
+    () => (photoFile ? URL.createObjectURL(photoFile) : null),
+    [photoFile],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl);
+    };
+  }, [photoObjectUrl]);
+
+  const displayedReviewPhoto = useMemo(() => {
+    if (!activeReview) return null;
+    if (groupReviewEdit) {
+      if (removePhoto) return null;
+      return photoObjectUrl ?? activeReview.host_photo_url;
+    }
+    return activeReview.host_photo_url;
+  }, [activeReview, groupReviewEdit, removePhoto, photoObjectUrl]);
+
   useEffect(() => {
     if (activeReview) {
       setGroupTitle(activeReview.title ?? "");
       setGroupBody(activeReview.body);
       setGroupReviewEdit(false);
+      setPhotoFile(null);
+      setRemovePhoto(false);
     }
-  }, [activeReview?.id, activeReview?.title, activeReview?.body]);
+  }, [
+    activeReview?.id,
+    activeReview?.title,
+    activeReview?.body,
+    activeReview?.host_photo_url,
+  ]);
 
   useEffect(() => {
     setReviewCommentAnchorUserId(null);
@@ -577,7 +632,11 @@ export function PinDetailPanel({
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => setGroupReviewEdit(true)}
+                        onClick={() => {
+                          setPhotoFile(null);
+                          setRemovePhoto(false);
+                          setGroupReviewEdit(true);
+                        }}
                         className="rounded-xl border border-zinc-200 px-3 py-1.5 text-sm dark:border-zinc-600"
                       >
                         Edit published summary
@@ -613,10 +672,22 @@ export function PinDetailPanel({
                         e.preventDefault();
                         void (async () => {
                           try {
+                            let host_photo_url: string | null =
+                              activeReview.host_photo_url ?? null;
+                            if (removePhoto) host_photo_url = null;
+                            else if (photoFile) {
+                              host_photo_url = await uploadHostReviewPhoto(
+                                activeReview.id,
+                                photoFile,
+                              );
+                            }
                             await updateGroupReview(activeReview.id, {
                               title: groupTitle || null,
                               body: groupBody,
+                              host_photo_url,
                             });
+                            setPhotoFile(null);
+                            setRemovePhoto(false);
                             setGroupReviewEdit(false);
                             await load();
                           } catch {
@@ -637,6 +708,36 @@ export function PinDetailPanel({
                         rows={6}
                         className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
                       />
+                      <div className="space-y-1">
+                        <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                          Host photo (optional)
+                        </label>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/gif,image/webp"
+                          className="w-full text-sm text-zinc-600 file:mr-2 file:rounded-lg file:border-0 file:bg-emerald-600 file:px-3 file:py-1.5 file:text-white dark:text-zinc-300"
+                          onChange={(ev) => {
+                            const f = ev.target.files?.[0];
+                            if (!f) return;
+                            if (!f.type.startsWith("image/")) return;
+                            setRemovePhoto(false);
+                            setPhotoFile(f);
+                            ev.target.value = "";
+                          }}
+                        />
+                        {(photoFile || activeReview.host_photo_url) && (
+                          <button
+                            type="button"
+                            className="text-xs text-red-600 hover:underline dark:text-red-400"
+                            onClick={() => {
+                              setPhotoFile(null);
+                              setRemovePhoto(true);
+                            }}
+                          >
+                            Remove photo
+                          </button>
+                        )}
+                      </div>
                       <div className="flex gap-2">
                         <button
                           type="submit"
@@ -646,7 +747,11 @@ export function PinDetailPanel({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setGroupReviewEdit(false)}
+                          onClick={() => {
+                            setGroupReviewEdit(false);
+                            setPhotoFile(null);
+                            setRemovePhoto(false);
+                          }}
                           className="text-sm text-zinc-500"
                         >
                           Cancel
@@ -655,6 +760,14 @@ export function PinDetailPanel({
                     </form>
                   )}
                 </div>
+              ) : null}
+              {displayedReviewPhoto ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={displayedReviewPhoto}
+                  alt=""
+                  className="mt-4 max-h-72 w-full rounded-2xl border border-zinc-200/80 object-cover dark:border-zinc-700"
+                />
               ) : null}
               <pre className="mt-4 whitespace-pre-wrap font-sans text-sm text-zinc-800 dark:text-zinc-200">
                 {activeReview.body}
@@ -921,8 +1034,17 @@ export function PinDetailPanel({
                               onClick={() =>
                                 mapQuery({ review: r.id, event: null })
                               }
-                              className="w-full rounded-2xl border border-zinc-200/80 bg-white/70 px-4 py-4 text-left shadow-[0_8px_24px_rgba(15,23,42,0.06)] transition hover:border-emerald-200/90 dark:border-zinc-700 dark:bg-zinc-900/50 dark:hover:border-emerald-800/60"
+                              className="flex w-full gap-3 rounded-2xl border border-zinc-200/80 bg-white/70 px-4 py-4 text-left shadow-[0_8px_24px_rgba(15,23,42,0.06)] transition hover:border-emerald-200/90 dark:border-zinc-700 dark:bg-zinc-900/50 dark:hover:border-emerald-800/60"
                             >
+                              {r.host_photo_url ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={r.host_photo_url}
+                                  alt=""
+                                  className="h-14 w-14 shrink-0 rounded-xl border border-zinc-200/80 object-cover dark:border-zinc-600"
+                                />
+                              ) : null}
+                              <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2 text-sm">
                                 {stars ? (
                                   <span className="font-semibold text-zinc-900 dark:text-zinc-50">
@@ -958,6 +1080,7 @@ export function PinDetailPanel({
                                   Open to read the full summary and comments.
                                 </p>
                               )}
+                              </div>
                             </button>
                           </li>
                         );

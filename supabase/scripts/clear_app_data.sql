@@ -1,4 +1,5 @@
 -- Wipe all application data; keeps schema, migrations, extensions, and RLS policies.
+-- (public.notifications is omitted — minimal schema no longer includes that table.)
 -- Run with psql (see README in parent or project docs). Uses a direct Postgres role
 -- (e.g. postgres) — not the Supabase Data API.
 
@@ -6,7 +7,6 @@ begin;
 
 -- Remove rows in public schema (FK order handled in one TRUNCATE).
 truncate table
-  public.notifications,
   public.message_reactions,
   public.event_messages,
   public.poll_votes,
