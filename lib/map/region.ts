@@ -2,10 +2,10 @@
 export const STANFORD_CENTER = { lat: 37.4275, lng: -122.1697 } as const;
 
 /** Default zoom for the interactive pins map (campus scale). */
-export const STANFORD_MAP_ZOOM = 15;
+export const STANFORD_MAP_ZOOM = 16;
 
 /** Slightly wider framing for the static login backdrop map. */
-export const STANFORD_AUTH_MAP_ZOOM = 14;
+export const STANFORD_AUTH_MAP_ZOOM = 15;
 
 /**
  * Nominatim `viewbox=left,top,right,bottom` (west, north, east, south) to bias
