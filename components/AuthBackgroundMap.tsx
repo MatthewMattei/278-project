@@ -1,9 +1,12 @@
 "use client";
 
+import {
+  STANFORD_AUTH_MAP_ZOOM,
+  STANFORD_CENTER,
+} from "@/lib/map/region";
 import "leaflet/dist/leaflet.css";
 import { MapContainer, TileLayer } from "react-leaflet";
 
-const defaultCenter = { lat: 37.7749, lng: -122.4194 };
 const DEFAULT_TILE_URL =
   "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
 const DEFAULT_ATTRIBUTION =
@@ -20,8 +23,8 @@ export default function AuthBackgroundMap() {
 
   return (
     <MapContainer
-      center={[defaultCenter.lat, defaultCenter.lng]}
-      zoom={11}
+      center={[STANFORD_CENTER.lat, STANFORD_CENTER.lng]}
+      zoom={STANFORD_AUTH_MAP_ZOOM}
       className="h-full w-full [&_.leaflet-pane]:!z-0 [&_.leaflet-top]:hidden [&_.leaflet-bottom]:hidden"
       zoomControl={false}
       attributionControl={false}
