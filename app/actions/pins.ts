@@ -4,13 +4,18 @@ import { createClient } from "@/lib/supabase/server";
 import { requireUserWithProfile } from "@/lib/supabase/ensure-profile";
 import { revalidatePath } from "next/cache";
 
-export async function createPin(lat: number, lng: number, title: string) {
+export async function createPin(
+  lat: number,
+  lng: number,
+  title: string,
+  category: string = "other",
+) {
   const supabase = await createClient();
   const user = await requireUserWithProfile(supabase);
 
   const { data, error } = await supabase
     .from("pins")
-    .insert({ lat, lng, title, created_by: user.id })
+    .insert({ lat, lng, title, category, created_by: user.id })
     .select("id")
     .single();
 
@@ -21,7 +26,7 @@ export async function createPin(lat: number, lng: number, title: string) {
 
 export async function updatePin(
   pinId: string,
-  input: { title?: string; lat?: number; lng?: number },
+  input: { title?: string; lat?: number; lng?: number; category?: string },
 ) {
   const supabase = await createClient();
   const user = await requireUserWithProfile(supabase);
