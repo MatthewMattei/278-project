@@ -2,10 +2,12 @@
 
 import { createPin } from "@/app/actions/pins";
 import { createClient } from "@/lib/supabase/client";
+import { STANFORD_CENTER, STANFORD_MAP_ZOOM } from "@/lib/map/region";
 import {
-  STANFORD_CENTER,
-  STANFORD_MAP_ZOOM,
-} from "@/lib/map/region";
+  CATEGORIES,
+  type CategoryId,
+  makeCategoryIcon,
+} from "@/lib/map/categories";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { PinDetailPanel } from "@/components/PinDetailPanel";
@@ -24,6 +26,7 @@ type PinRow = {
   lat: number;
   lng: number;
   title: string;
+  category: string;
 };
 
 type GeocodeResult = { lat: number; lng: number; label: string };
@@ -34,19 +37,14 @@ const DEFAULT_TILE_URL =
 const DEFAULT_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
-/** Leaflet default icons break under bundlers; use CDN assets. */
-const markerIcon = L.icon({
-  iconUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  shadowUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-});
+/** Pre-built Leaflet icons for each category (keyed by category id). */
+const categoryIcons: Record<string, L.DivIcon> = {};
+function getCategoryIcon(categoryId: string): L.DivIcon {
+  if (!categoryIcons[categoryId]) {
+    categoryIcons[categoryId] = makeCategoryIcon(categoryId);
+  }
+  return categoryIcons[categoryId];
+}
 
 function titleFromGeocodeLabel(label: string): string {
   const first = label.split(",").map((s) => s.trim())[0];
@@ -98,12 +96,28 @@ export default function MapExplorer() {
     router.replace(`/map?pin=${encodeURIComponent(id)}`, { scroll: false });
   }
   const [pins, setPins] = useState<PinRow[]>([]);
-  const [draft, setDraft] = useState<{ lat: number; lng: number } | null>(
-    null,
-  );
+  const [draft, setDraft] = useState<{ lat: number; lng: number } | null>(null);
   const [title, setTitle] = useState("");
+  const [draftCategory, setDraftCategory] = useState<CategoryId>("other");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Categories that are currently visible on the map (all on by default)
+  const [activeCategories, setActiveCategories] = useState<Set<CategoryId>>(
+    () => new Set(CATEGORIES.map((c) => c.id)),
+  );
+
+  function toggleCategory(id: CategoryId) {
+    setActiveCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
@@ -119,8 +133,7 @@ export default function MapExplorer() {
   const tileUrl =
     process.env.NEXT_PUBLIC_MAP_TILE_URL?.trim() || DEFAULT_TILE_URL;
   const attribution =
-    process.env.NEXT_PUBLIC_MAP_TILE_ATTRIBUTION?.trim() ||
-    DEFAULT_ATTRIBUTION;
+    process.env.NEXT_PUBLIC_MAP_TILE_ATTRIBUTION?.trim() || DEFAULT_ATTRIBUTION;
   const subdomains =
     process.env.NEXT_PUBLIC_MAP_TILE_SUBDOMAINS?.trim() || "abcd";
 
@@ -128,7 +141,7 @@ export default function MapExplorer() {
     const supabase = createClient();
     const { data, error } = await supabase
       .from("pins")
-      .select("id, lat, lng, title")
+      .select("id, lat, lng, title, category")
       .order("created_at", { ascending: false })
       .limit(500);
     if (error) {
@@ -157,6 +170,7 @@ export default function MapExplorer() {
   const onMapClick = useCallback((lat: number, lng: number) => {
     setDraft({ lat, lng });
     setTitle("");
+    setDraftCategory("other");
     setErr(null);
     setSearchOpen(false);
   }, []);
@@ -171,9 +185,7 @@ export default function MapExplorer() {
     setSearchError(null);
     setSearchResults([]);
     try {
-      const res = await fetch(
-        `/api/places/search?q=${encodeURIComponent(q)}`,
-      );
+      const res = await fetch(`/api/places/search?q=${encodeURIComponent(q)}`);
       const data = (await res.json()) as {
         error?: string;
         results?: GeocodeResult[];
@@ -213,9 +225,15 @@ export default function MapExplorer() {
     setSaving(true);
     setErr(null);
     try {
-      const id = await createPin(draft.lat, draft.lng, title.trim());
+      const id = await createPin(
+        draft.lat,
+        draft.lng,
+        title.trim(),
+        draftCategory,
+      );
       setDraft(null);
       setTitle("");
+      setDraftCategory("other");
       await loadPins();
       openPin(id);
     } catch (e) {
@@ -248,19 +266,23 @@ export default function MapExplorer() {
           />
           <MapFlyTo tick={flyTick} lat={flyLat} lng={flyLng} zoom={flyZoom} />
           <MapClickHandler onClick={onMapClick} />
-          {pins.map((p) => (
-            <Marker
-              key={p.id}
-              position={[p.lat, p.lng]}
-              icon={markerIcon}
-              eventHandlers={{
-                click: (e) => {
-                  L.DomEvent.stopPropagation(e.originalEvent);
-                  openPin(p.id);
-                },
-              }}
-            />
-          ))}
+          {pins
+            .filter((p) =>
+              activeCategories.has((p.category ?? "other") as CategoryId),
+            )
+            .map((p) => (
+              <Marker
+                key={p.id}
+                position={[p.lat, p.lng]}
+                icon={getCategoryIcon(p.category ?? "other")}
+                eventHandlers={{
+                  click: (e) => {
+                    L.DomEvent.stopPropagation(e.originalEvent);
+                    openPin(p.id);
+                  },
+                }}
+              />
+            ))}
         </MapContainer>
 
         <div
@@ -327,7 +349,10 @@ export default function MapExplorer() {
             {searchOpen && searchResults.length > 0 ? (
               <ul className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-zinc-200/80 bg-white/90 dark:border-zinc-600 dark:bg-zinc-900/90">
                 {searchResults.map((r, i) => (
-                  <li key={`${r.lat},${r.lng},${i}`} className="border-b border-zinc-100 last:border-0 dark:border-zinc-700/80">
+                  <li
+                    key={`${r.lat},${r.lng},${i}`}
+                    className="border-b border-zinc-100 last:border-0 dark:border-zinc-700/80"
+                  >
                     <button
                       type="button"
                       className="w-full px-3 py-2 text-left text-xs leading-snug text-zinc-800 hover:bg-emerald-50 dark:text-zinc-100 dark:hover:bg-emerald-950/40"
@@ -339,6 +364,41 @@ export default function MapExplorer() {
                 ))}
               </ul>
             ) : null}
+          </div>
+        </div>
+
+        {/* Category filter legend — bottom-left */}
+        <div className="pointer-events-auto absolute bottom-6 left-3 z-[1000]">
+          <div className="rounded-2xl border border-white/40 bg-white/95 p-3 shadow-[0_8px_32px_rgba(15,23,42,0.18)] backdrop-blur-md dark:border-zinc-600 dark:bg-zinc-900/95">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+              Filter
+            </p>
+            <ul className="flex flex-col gap-1.5">
+              {CATEGORIES.map((cat) => {
+                const active = activeCategories.has(cat.id);
+                return (
+                  <li key={cat.id}>
+                    <button
+                      type="button"
+                      onClick={() => toggleCategory(cat.id)}
+                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs font-medium transition ${
+                        active
+                          ? "text-zinc-900 dark:text-zinc-50"
+                          : "text-zinc-400 line-through dark:text-zinc-600"
+                      }`}
+                    >
+                      <span
+                        className="inline-block h-3 w-3 shrink-0 rounded-full border border-white/80 shadow-sm"
+                        style={{
+                          backgroundColor: active ? cat.color : "#d1d5db",
+                        }}
+                      />
+                      <span>{cat.label}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </div>
 
@@ -356,8 +416,37 @@ export default function MapExplorer() {
               placeholder="Place name"
               className="mt-3 w-full rounded-xl border border-zinc-200/90 bg-white/70 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/50"
             />
+            {/* Category picker */}
+            <div className="mt-3">
+              <p className="mb-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                Category
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setDraftCategory(cat.id)}
+                    className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                      draftCategory === cat.id
+                        ? "border-transparent text-white shadow-sm"
+                        : "border-zinc-200/90 bg-white/70 text-zinc-600 hover:border-zinc-300 dark:border-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300"
+                    }`}
+                    style={
+                      draftCategory === cat.id
+                        ? { backgroundColor: cat.color }
+                        : {}
+                    }
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             {err ? (
-              <p className="mt-2 text-sm text-red-600 dark:text-red-400">{err}</p>
+              <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+                {err}
+              </p>
             ) : null}
             <div className="mt-3 flex gap-2">
               <button
