@@ -414,6 +414,82 @@ export function PinDetailPanel({
     return r.member_summaries?.length ?? 0;
   }
 
+  function didParticipate(r: ReviewRow): boolean {
+    if (!myUserId) return false;
+    const inSummaries = (r.member_summaries ?? []).some(
+      (m) => m.user_id === myUserId,
+    );
+    const isHost = r.source_event_id
+      ? plannerByEventId.get(r.source_event_id) === myUserId
+      : false;
+    return inSummaries || isHost;
+  }
+
+  function renderReviewCard(r: ReviewRow) {
+    const host = hostExcerpt(r);
+    const stars = reviewStarDisplay(r);
+    const count = reviewPersonCount(r);
+    const reviewPlannerId =
+      r.source_event_id && plannerByEventId.get(r.source_event_id);
+    const hostName =
+      reviewPlannerId && authorProfiles.get(reviewPlannerId)?.display_name;
+    return (
+      <li key={r.id}>
+        <button
+          type="button"
+          onClick={() => mapQuery({ review: r.id, event: null })}
+          className="flex w-full gap-3 rounded-2xl border border-zinc-200/80 bg-white/70 px-4 py-4 text-left shadow-[0_8px_24px_rgba(15,23,42,0.06)] transition hover:border-emerald-200/90 dark:border-zinc-700 dark:bg-zinc-900/50 dark:hover:border-emerald-800/60"
+        >
+          {r.host_photo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={r.host_photo_url}
+              alt=""
+              className="h-14 w-14 shrink-0 rounded-xl border border-zinc-200/80 object-cover dark:border-zinc-600"
+            />
+          ) : null}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              {stars ? (
+                <span className="font-semibold text-zinc-900 dark:text-zinc-50">
+                  {stars} ★
+                </span>
+              ) : null}
+              <span className="text-zinc-600 dark:text-zinc-400">
+                {count} 🧑
+              </span>
+              <span className="text-xs text-zinc-500">
+                {new Date(r.created_at).toLocaleDateString()}
+              </span>
+            </div>
+            {hostName ? (
+              <p className="mt-1 text-xs font-medium text-amber-900/90 dark:text-amber-200/90">
+                Event host: {hostName}
+              </p>
+            ) : null}
+            {r.title ? (
+              <p className="mt-2 font-medium text-zinc-900 dark:text-zinc-100">
+                {r.title}
+              </p>
+            ) : null}
+            {host ? (
+              <p className="mt-2 line-clamp-3 text-sm text-zinc-700 dark:text-zinc-300">
+                <span className="font-medium text-emerald-800 dark:text-emerald-300">
+                  Host —{" "}
+                </span>
+                {host}
+              </p>
+            ) : (
+              <p className="mt-2 text-sm italic text-zinc-500">
+                Open to read the full summary and comments.
+              </p>
+            )}
+          </div>
+        </button>
+      </li>
+    );
+  }
+
   function reviewStarDisplay(r: ReviewRow): string | null {
     const v = r.rating ?? r.stats?.avg;
     if (v == null || Number.isNaN(Number(v))) return null;
@@ -1011,82 +1087,48 @@ export function PinDetailPanel({
                     Summaries from completed events. Open one to see every
                     perspective and comment.
                   </p>
-                  <ul className="mt-4 space-y-3">
-                    {groupReviews.length === 0 ? (
+                  {groupReviews.length === 0 ? (
+                    <ul className="mt-4 space-y-3">
                       <li className="text-sm text-zinc-500">
                         No group reviews yet.
                       </li>
-                    ) : (
-                      groupReviews.map((r) => {
-                        const host = hostExcerpt(r);
-                        const stars = reviewStarDisplay(r);
-                        const count = reviewPersonCount(r);
-                        const reviewPlannerId =
-                          r.source_event_id &&
-                          plannerByEventId.get(r.source_event_id);
-                        const hostName =
-                          reviewPlannerId &&
-                          authorProfiles.get(reviewPlannerId)?.display_name;
-                        return (
-                          <li key={r.id}>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                mapQuery({ review: r.id, event: null })
-                              }
-                              className="flex w-full gap-3 rounded-2xl border border-zinc-200/80 bg-white/70 px-4 py-4 text-left shadow-[0_8px_24px_rgba(15,23,42,0.06)] transition hover:border-emerald-200/90 dark:border-zinc-700 dark:bg-zinc-900/50 dark:hover:border-emerald-800/60"
-                            >
-                              {r.host_photo_url ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={r.host_photo_url}
-                                  alt=""
-                                  className="h-14 w-14 shrink-0 rounded-xl border border-zinc-200/80 object-cover dark:border-zinc-600"
-                                />
-                              ) : null}
-                              <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2 text-sm">
-                                {stars ? (
-                                  <span className="font-semibold text-zinc-900 dark:text-zinc-50">
-                                    {stars} ★
-                                  </span>
-                                ) : null}
-                                <span className="text-zinc-600 dark:text-zinc-400">
-                                  {count} 🧑
-                                </span>
-                                <span className="text-xs text-zinc-500">
-                                  {new Date(r.created_at).toLocaleDateString()}
-                                </span>
-                              </div>
-                              {hostName ? (
-                                <p className="mt-1 text-xs font-medium text-amber-900/90 dark:text-amber-200/90">
-                                  Event host: {hostName}
-                                </p>
-                              ) : null}
-                              {r.title ? (
-                                <p className="mt-2 font-medium text-zinc-900 dark:text-zinc-100">
-                                  {r.title}
-                                </p>
-                              ) : null}
-                              {host ? (
-                                <p className="mt-2 line-clamp-3 text-sm text-zinc-700 dark:text-zinc-300">
-                                  <span className="font-medium text-emerald-800 dark:text-emerald-300">
-                                    Host —{" "}
-                                  </span>
-                                  {host}
-                                </p>
-                              ) : (
-                                <p className="mt-2 text-sm italic text-zinc-500">
-                                  Open to read the full summary and comments.
-                                </p>
-                              )}
-                              </div>
-                            </button>
-                          </li>
-                        );
-                      })
-                    )}
-                  </ul>
+                    </ul>
+                  ) : (
+                    (() => {
+                      const myReviews = groupReviews.filter(didParticipate);
+                      const otherReviews = groupReviews.filter(
+                        (r) => !didParticipate(r),
+                      );
+                      return (
+                        <>
+                          {myReviews.length > 0 ? (
+                            <>
+                              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700/95 dark:text-emerald-300">
+                                Your reviews
+                              </p>
+                              <ul className="mt-3 space-y-3">
+                                {myReviews.map((r) => renderReviewCard(r))}
+                              </ul>
+                            </>
+                          ) : null}
+                          {myReviews.length > 0 && otherReviews.length > 0 ? (
+                            <div className="mt-6 flex items-center gap-3">
+                              <span className="h-px flex-1 bg-emerald-300/70 dark:bg-emerald-700/60" />
+                              <span className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-emerald-700/95 dark:text-emerald-300">
+                                Reviews from other groups
+                              </span>
+                              <span className="h-px flex-1 bg-emerald-300/70 dark:bg-emerald-700/60" />
+                            </div>
+                          ) : null}
+                          {otherReviews.length > 0 ? (
+                            <ul className="mt-3 space-y-3">
+                              {otherReviews.map((r) => renderReviewCard(r))}
+                            </ul>
+                          ) : null}
+                        </>
+                      );
+                    })()
+                  )}
                 </section>
               )}
             </>
